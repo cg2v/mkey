@@ -869,6 +869,11 @@ static MKey_Error op_set_metakey(MKey_Integer cookie, char *reqbuf, int reqlen,
   tag->meta_kvno = intargs[0];
   tag->meta_enctype = intargs[1];
   tag->meta_key = keyblock;
+  if (tag->challenge.length) {
+    memset(tag->challenge.data, 0, tag->challenge.length);
+    free(tag->challenge.data);
+    memset(&tag->challenge.data, 0, sizeof(tag->challenge.data));
+  }
 
   err = pthread_rwlock_unlock(&tag->lock);
   if (err) return err;
@@ -1046,7 +1051,6 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
   ktent.keyblock.keytype  = tag->meta_enctype;
   ktent.keyblock.keyvalue = tag->challenge;
   err = krb5_kt_add_entry(ctx, kt, &ktent);
-  free(ktent.keyblock.keyvalue.data);
   if (err) {
     krb5_kt_close(ctx, kt);
     unlink(filename1);
