@@ -89,6 +89,7 @@ static MKey_Error do_request(MKey_Integer cookie, int reqlen,
         default:        return errno;
         case EOVERFLOW: return MKEY_ERR_TOO_BIG;
         case EINTR:     continue;
+        case EBADF:
         case EAGAIN:
           try++;
           close(mkeyd_sock);

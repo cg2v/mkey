@@ -602,7 +602,7 @@ static void mainloop(void)
 
   for (;;) {
     pthread_cond_wait(&exit_cv, &exit_mutex);
-    unlink(sock_name);
+    door_revoke(doorfd);
   }
 }
 
