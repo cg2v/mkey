@@ -47,15 +47,17 @@
 #include "mkey_err.h"
 #include "mkey.h"
 
-typedef int32_t (*opfunc)    (char *, int, char *, int *);
-static int32_t op_encrypt    (char *, int, char *, int *);
-static int32_t op_decrypt    (char *, int, char *, int *);
-static int32_t op_add_key    (char *, int, char *, int *);
-static int32_t op_remove_key (char *, int, char *, int *);
-static int32_t op_verify_key (char *, int, char *, int *);
-static int32_t op_list_keys  (char *, int, char *, int *);
-static int32_t op_list_tag   (char *, int, char *, int *);
-static int32_t op_shutdown   (char *, int, char *, int *);
+#define MAX_LIST_KEYS 512
+
+typedef MKey_Error (*opfunc)    (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_encrypt    (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_decrypt    (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_add_key    (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_remove_key (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_verify_key (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_list_keys  (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_list_tag   (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_shutdown   (MKey_Integer, char *, int, char *, int *);
 
 static opfunc operations[] = {
   op_encrypt,    /* MKEY_OP_ENCRYPT    */
@@ -96,7 +98,7 @@ static pthread_mutex_t exit_mutex;
 static pthread_cond_t exit_cv;
 
 
-static int32_t context_setup(krb5_context *ctx)
+static MKey_Error context_setup(krb5_context *ctx)
 {
   int err;
 
@@ -115,7 +117,7 @@ static void context_destruct(void * ctx)
 }
 
 
-static int32_t find_tag(char *name, struct taginfo **rtag, int create)
+static MKey_Error find_tag(char *name, struct taginfo **rtag, int create)
 {
   struct taginfo *tag;
   int err;
@@ -162,7 +164,7 @@ static int32_t find_tag(char *name, struct taginfo **rtag, int create)
   return pthread_rwlock_unlock(&masterlock);
 }
 
-static int32_t find_tag_slot(int slot, struct taginfo **rtag)
+static MKey_Error find_tag_slot(int slot, struct taginfo **rtag)
 {
   struct taginfo *tag;
   int err;
@@ -184,8 +186,8 @@ static int32_t find_tag_slot(int slot, struct taginfo **rtag)
   return MKEY_ERR_NO_TAG;
 }
 
-static int32_t find_key(struct taginfo *tag, int kvno,
-                        struct keyinfo **rkey, int create)
+static MKey_Error find_key(struct taginfo *tag, int kvno,
+                           struct keyinfo **rkey, int create)
 {
   struct keyinfo *key;
   int err;
@@ -228,30 +230,25 @@ static int32_t find_key(struct taginfo *tag, int kvno,
 
 
 
-static int32_t encrypt_decrypt(char *reqbuf, int reqlen, char *repbuf, int *replen, int dir)
+static MKey_Error encrypt_decrypt(MKey_Integer cookie, int dir,
+                                  char *reqbuf, int reqlen,
+                                  char *repbuf, int *replen)
 {
-  int32_t kvno, textsize, rtextsize, err;
-  char *tagname, *text;
+  MKey_Integer kvno;
+  MKey_Error err;
+  MKey_DataBlock data;
+  char *tagname;
   struct taginfo *tag;
   struct keyinfo *key;
   krb5_context ctx;
   krb5_data res;
 
-  if (reqlen < MKEY_HDRSIZE + 8)
-    return MKEY_ERR_REQ_FORMAT;
-  memcpy(&kvno, reqbuf + MKEY_HDRSIZE, 4);
-  memcpy(&textsize, reqbuf + MKEY_HDRSIZE + 4, 4);
-  if (reqlen < MKEY_HDRSIZE + 8 + textsize + 1)
-    return MKEY_ERR_REQ_FORMAT;
-  text = reqbuf + MKEY_HDRSIZE + 8;
-  tagname = reqbuf + MKEY_HDRSIZE + 8 + textsize;
-  reqbuf[reqlen - 1] = 0;
-
-  /* syslog(LOG_DEBUG, "%s(%s[%d], %d bytes)", dir ? "encrypt" : "decrypt",
-         tagname, kvno, textsize); */
+  err = _mkey_decode(reqbuf, reqlen, 1, &kvno, 0, 0, &data, &tagname);
+  if (err) return err;
 
   err = find_tag(tagname, &tag, 0);
   if (err) return err;
+
   err = find_key(tag, kvno, &key, 0);
   if (err) return err;
 
@@ -276,9 +273,11 @@ static int32_t encrypt_decrypt(char *reqbuf, int reqlen, char *repbuf, int *repl
   }
 
   if (dir) 
-    err = krb5_encrypt(ctx, key->crypto, HDB_KU_MKEY, text, textsize, &res);
+    err = krb5_encrypt(ctx, key->crypto, HDB_KU_MKEY,
+                       data.data, data.size, &res);
   else
-    err = krb5_decrypt(ctx, key->crypto, HDB_KU_MKEY, text, textsize, &res);
+    err = krb5_decrypt(ctx, key->crypto, HDB_KU_MKEY,
+                       data.data, data.size, &res);
   if (err) {
     pthread_mutex_unlock(&key->mutex);
     return err;
@@ -291,57 +290,52 @@ static int32_t encrypt_decrypt(char *reqbuf, int reqlen, char *repbuf, int *repl
   }
   /* end critical section */
 
-  rtextsize = res.length;
-  if (MKEY_HDRSIZE + 4 + rtextsize > MKEY_MAXSIZE)
-    return MKEY_ERR_TOO_BIG;
-  *replen = MKEY_HDRSIZE + 4 + rtextsize;
-  memcpy(repbuf + MKEY_HDRSIZE, &rtextsize, 4);
-  memcpy(repbuf + MKEY_HDRSIZE + 4, res.data, res.length);
+  data.data = res.data;
+  data.size = res.length;
+
+  err = _mkey_encode(repbuf, replen, cookie, 0, 0, 0, &data, 0);
   free(res.data);
-
-  return 0;
+  return err;
 }
 
-static int32_t op_encrypt(char *reqbuf, int reqlen, char *repbuf, int *replen)
+static MKey_Error op_encrypt(MKey_Integer cookie, char *reqbuf, int reqlen,
+                             char *repbuf, int *replen)
 {
-  return encrypt_decrypt(reqbuf, reqlen, repbuf, replen, 1);
+  return encrypt_decrypt(cookie, 1, reqbuf, reqlen, repbuf, replen);
 }
 
-static int32_t op_decrypt(char *reqbuf, int reqlen, char *repbuf, int *replen)
+static MKey_Error op_decrypt(MKey_Integer cookie, char *reqbuf, int reqlen,
+                             char *repbuf, int *replen)
 {
-  return encrypt_decrypt(reqbuf, reqlen, repbuf, replen, 0);
+  return encrypt_decrypt(cookie, 0, reqbuf, reqlen, repbuf, replen);
 }
 
 
-static int32_t op_add_key(char *reqbuf, int reqlen, char *repbuf, int *replen)
+static MKey_Error op_add_key(MKey_Integer cookie, char *reqbuf, int reqlen,
+                             char *repbuf, int *replen)
 {
-  int32_t kvno, enctype, keysize, err;
-  char *tagname, *keydata;
+  MKey_Integer intargs[2];
+  MKey_Error err;
+  MKey_DataBlock keydata;
+  char *tagname;
   struct taginfo *tag;
   struct keyinfo *key;
   krb5_context ctx;
   krb5_keytype keytype;
 
-  if (reqlen < MKEY_HDRSIZE + 12)
-    return MKEY_ERR_REQ_FORMAT;
-  memcpy(&kvno, reqbuf + MKEY_HDRSIZE, 4);
-  memcpy(&enctype, reqbuf + MKEY_HDRSIZE + 4, 4);
-  memcpy(&keysize, reqbuf + MKEY_HDRSIZE + 8, 4);
-  if (reqlen < MKEY_HDRSIZE + 12 + keysize + 1)
-    return MKEY_ERR_REQ_FORMAT;
-  keydata = reqbuf + MKEY_HDRSIZE + 12;
-  tagname = reqbuf + MKEY_HDRSIZE + 12 + keysize;
-  reqbuf[reqlen - 1] = 0;
+  err = _mkey_decode(reqbuf, reqlen, 2, intargs, 0, 0, &keydata, &tagname);
+  if (err) return err;
 
   err = find_tag(tagname, &tag, 1);
   if (err) return err;
-  err = find_key(tag, kvno, &key, 1);
+
+  err = find_key(tag, intargs[0], &key, 1);
   if (err) return err;
 
   err = context_setup(&ctx);
   if (err) return err;
 
-  err = krb5_enctype_to_keytype(ctx, enctype, &keytype);
+  err = krb5_enctype_to_keytype(ctx, intargs[1], &keytype);
   if (err) return err;
 
   /* begin critical section */
@@ -353,44 +347,42 @@ static int32_t op_add_key(char *reqbuf, int reqlen, char *repbuf, int *replen)
     return MKEY_ERR_EXIST;
   }
 
-  key->key.keyvalue.data = malloc(keysize);
+  key->key.keyvalue.data = malloc(keydata.size);
   if (!key->key.keyvalue.data) {
     pthread_mutex_unlock(&key->mutex);
     return MKEY_ERR_NO_MEM;
   }
 
-  key->enctype = enctype;
+  key->enctype = intargs[1];
   key->key.keytype = keytype;
-  key->key.keyvalue.length = keysize;
-  memcpy(key->key.keyvalue.data, keydata, keysize);
+  key->key.keyvalue.length = keydata.size;
+  memcpy(key->key.keyvalue.data, keydata.data, keydata.size);
 
   err = pthread_mutex_unlock(&key->mutex);
   if (err) return err;
   /* end critical section */
 
-  syslog(LOG_INFO, "added key %s[%d]", tagname, kvno);
-
-  *replen = MKEY_HDRSIZE;
-  return 0;
+  syslog(LOG_INFO, "added key %s[%d]", tagname, intargs[0]);
+  return _mkey_encode(repbuf, replen, cookie, 0, 0, 0, 0, 0);
 }
 
 
-static int32_t op_remove_key(char *reqbuf, int reqlen, char *repbuf, int *replen)
+static MKey_Error op_remove_key(MKey_Integer cookie, char *reqbuf, int reqlen,
+                                char *repbuf, int *replen)
 {
-  int32_t kvno, err;
+  MKey_Integer kvno;
+  MKey_Error err;
   char *tagname;
   struct taginfo *tag;
   struct keyinfo *key;
   krb5_context ctx;
 
-  if (reqlen < MKEY_HDRSIZE + 4 + 1)
-    return MKEY_ERR_REQ_FORMAT;
-  memcpy(&kvno, reqbuf + MKEY_HDRSIZE, 4);
-  tagname = reqbuf + MKEY_HDRSIZE + 4;
-  reqbuf[reqlen - 1] = 0;
+  err = _mkey_decode(reqbuf, reqlen, 1, &kvno, 0, 0, 0, &tagname);
+  if (err) return err;
 
   err = find_tag(tagname, &tag, 0);
   if (err) return err;
+
   err = find_key(tag, kvno, &key, 0);
   if (err) return err;
 
@@ -419,28 +411,26 @@ static int32_t op_remove_key(char *reqbuf, int reqlen, char *repbuf, int *replen
   /* end critical section */
 
   syslog(LOG_INFO, "removed key %s[%d]", tagname, kvno);
-
-  *replen = MKEY_HDRSIZE;
-  return 0;
+  return _mkey_encode(repbuf, replen, cookie, 0, 0, 0, 0, 0);
 }
 
 
-static int32_t op_verify_key(char *reqbuf, int reqlen, char *repbuf, int *replen)
+static MKey_Error op_verify_key(MKey_Integer cookie, char *reqbuf, int reqlen,
+                                char *repbuf, int *replen)
 {
-  int32_t kvno, err;
+  MKey_Integer kvno;
+  MKey_Error err;
   char *tagname;
   struct taginfo *tag;
   struct keyinfo *key;
   krb5_context ctx;
 
-  if (reqlen < MKEY_HDRSIZE + 4 + 1)
-    return MKEY_ERR_REQ_FORMAT;
-  memcpy(&kvno, reqbuf + MKEY_HDRSIZE, 4);
-  tagname = reqbuf + MKEY_HDRSIZE + 4;
-  reqbuf[reqlen - 1] = 0;
+  err = _mkey_decode(reqbuf, reqlen, 1, &kvno, 0, 0, 0, &tagname);
+  if (err) return err;
 
   err = find_tag(tagname, &tag, 0);
   if (err) return err;
+
   err = find_key(tag, kvno, &key, 0);
   if (err) return err;
 
@@ -457,22 +447,23 @@ static int32_t op_verify_key(char *reqbuf, int reqlen, char *repbuf, int *replen
   if (err) return err;
   /* end critical section */
 
-  *replen = MKEY_HDRSIZE;
-  return 0;
+  return _mkey_encode(repbuf, replen, cookie, 0, 0, 0, 0, 0);
 }
 
 
-static int32_t op_list_keys(char *reqbuf, int reqlen, char *repbuf, int *replen)
+static MKey_Error op_list_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
+                               char *repbuf, int *replen)
 {
-  int32_t count, kvno, enctype, err;
+  /* well, this will eat up some stack... */
+  MKey_Integer iresult[1 + 2*MAX_LIST_KEYS], kvno, enctype;
+  MKey_Error err;
   char *tagname;
   struct taginfo *tag;
   struct keyinfo *key;
+  int i, count;
 
-  if (reqlen < MKEY_HDRSIZE + 1)
-    return MKEY_ERR_REQ_FORMAT;
-  tagname = reqbuf + MKEY_HDRSIZE;
-  reqbuf[reqlen - 1] = 0;
+  err = _mkey_decode(reqbuf, reqlen, 0, 0, 0, 0, 0, &tagname);
+  if (err) return err;
 
   err = find_tag(tagname, &tag, 0);
   if (err) return err;
@@ -480,8 +471,8 @@ static int32_t op_list_keys(char *reqbuf, int reqlen, char *repbuf, int *replen)
   err = pthread_rwlock_rdlock(&tag->lock);
   if (err) return err;
 
+  i = 1;
   count = 0;
-  *replen = MKEY_HDRSIZE + 4;
   for (key = tag->keys; key; key = key->next) {
     err = pthread_mutex_lock(&key->mutex);
     if (err) {
@@ -497,77 +488,69 @@ static int32_t op_list_keys(char *reqbuf, int reqlen, char *repbuf, int *replen)
     }
     if (!enctype) continue;
 
-    if (*replen + 8 > MKEY_MAXSIZE) {
+    if (count >= MAX_LIST_KEYS) {
       pthread_rwlock_unlock(&tag->lock);
       return MKEY_ERR_TOO_BIG;
     }
-    memcpy(repbuf + *replen,     &kvno,    4);
-    memcpy(repbuf + *replen + 4, &enctype, 4);
-    *replen += 8;
+    iresult[i++] = kvno;
+    iresult[i++] = enctype;
     count++;
   }
+  iresult[0] = count;
 
   err = pthread_rwlock_unlock(&tag->lock);
   if (err) return err;
 
-  memcpy(repbuf + MKEY_HDRSIZE, &count, 4);
-  return 0;
+  return _mkey_encode(repbuf, replen, cookie, 0, i, iresult, 0, 0);
 }
 
 
-static int32_t op_list_tag(char *reqbuf, int reqlen, char *repbuf, int *replen)
+static MKey_Error op_list_tag(MKey_Integer cookie, char *reqbuf, int reqlen,
+                              char *repbuf, int *replen)
 {
-  int32_t slot, err;
+  MKey_Integer slot;
+  MKey_Error err;
   struct taginfo *tag;
 
-  if (reqlen != MKEY_HDRSIZE + 4)
-    return MKEY_ERR_REQ_FORMAT;
-  memcpy(&slot, reqbuf + MKEY_HDRSIZE, 4);
+  err = _mkey_decode(reqbuf, reqlen, 1, &slot, 0, 0, 0, 0);
+  if (err) return err;
 
   err = find_tag_slot(slot, &tag);
   if (err) return err;
 
-  if (MKEY_HDRSIZE + strlen(tag->name) + 1 > MKEY_MAXSIZE)
-    return MKEY_ERR_TOO_BIG;
-  *replen = MKEY_HDRSIZE + strlen(tag->name) + 1;
-  strcpy(repbuf + MKEY_HDRSIZE, tag->name);
-
-  return 0;
+  return _mkey_encode(repbuf, replen, cookie, 0, 0, 0, 0, tag->name);
 }
 
 
-static int32_t op_shutdown(char *reqbuf, int reqlen, char *repbuf, int *replen)
+static MKey_Error op_shutdown(MKey_Integer cookie, char *reqbuf, int reqlen,
+                              char *repbuf, int *replen)
 {
-  *replen = MKEY_HDRSIZE;
+  MKey_Error err;
+
   syslog(LOG_INFO, "shutting down");
-  return pthread_cond_signal(&exit_cv);
+  err = pthread_cond_signal(&exit_cv);
+  if (err) return err;
+
+  return _mkey_encode(repbuf, replen, cookie, 0, 0, 0, 0, 0);
 }
 
 
 static void proc_request(char *reqbuf, int reqlen, char *repbuf, int *replen)
 {
-  int32_t cookie, reqid;
-  int32_t err;
+  MKey_Integer cookie, reqid;
+  MKey_Error err;
 
   cookie = 0;
-  err = 0;
-  if (reqlen < MKEY_HDRSIZE) {
-    err = MKEY_ERR_REQ_FORMAT;
-    goto fail;
-  }
- 
-  memcpy(&cookie, reqbuf, 4);
-  memcpy(&reqid, reqbuf + 4, 4);
+  err = _mkey_decode_header(reqbuf, reqlen, &cookie, &reqid);
+  if (err) goto fail;
 
   if (reqid < 0 || reqid > n_operations - 1 || !operations[reqid])
     err = MKEY_ERR_UNKNOWN_REQ;
   else
-    err = (operations[reqid])(reqbuf, reqlen, repbuf, replen);
+    err = (operations[reqid])(cookie, reqbuf, reqlen, repbuf, replen);
 
 fail:
-  if (err) *replen = 8;
-  memcpy(repbuf, &cookie, 4);
-  memcpy(repbuf + 4, &err, 4);
+  if (err) _mkey_encode(repbuf, replen, cookie, err, 0, 0, 0, 0);
 }
 
 #ifdef USE_DOORS
@@ -581,6 +564,7 @@ static void handle_door_request(void *cookie, char *argp, size_t arg_size,
     /* time to shut down! */
     exit(0);
   }
+  replen = MKEY_MAXSIZE;
   proc_request(argp, arg_size, repbuf, &replen);
   door_return(repbuf, replen, 0, 0);
 }

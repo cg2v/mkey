@@ -93,9 +93,8 @@ MKey_Error _mkey_decode(char *buf, int buflen,
     memcpy(&datasize, buf + offset, 4);           offset += 4;
 
     if (buflen - offset < datasize) return MKEY_ERR_MSG_FORMAT;
-    if (datasize > data->size) return MKEY_ERR_OVERFLOW;
     data->size = datasize;
-    memcpy(data->data, buf + offset, datasize);
+    data->data = buf + offset;
     offset += datasize;
   }
   if (nkeys) {

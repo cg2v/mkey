@@ -126,6 +126,7 @@ static MKey_Error do_request(MKey_Integer cookie, int reqlen,
 MKey_Error mkey_encrypt(char *tag, MKey_Integer kvno, 
                         MKey_DataBlock *in, MKey_DataBlock *out)
 {
+  MKey_DataBlock outdata;
   MKey_Integer cookie;
   MKey_Error err;
   int reqlen, replen;
@@ -140,8 +141,13 @@ MKey_Error mkey_encrypt(char *tag, MKey_Integer kvno,
   err = do_request(cookie, reqlen, &replen, &repptr);
   if (err) return err;
 
-  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, out, 0);
+  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, &outdata, 0);
   if (err) return err;
+
+  if (outdata.size > out->size)
+    return MKEY_ERR_OVERFLOW;
+  memcpy(out->data, outdata.data, outdata.size);
+  out->size = outdata.size;
 
   return 0;
 }
@@ -150,6 +156,7 @@ MKey_Error mkey_encrypt(char *tag, MKey_Integer kvno,
 MKey_Error mkey_decrypt(char *tag, MKey_Integer kvno, 
                         MKey_DataBlock *in, MKey_DataBlock *out)
 {
+  MKey_DataBlock outdata;
   MKey_Integer cookie;
   MKey_Error err;
   int reqlen, replen;
@@ -164,8 +171,13 @@ MKey_Error mkey_decrypt(char *tag, MKey_Integer kvno,
   err = do_request(cookie, reqlen, &replen, &repptr);
   if (err) return err;
 
-  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, out, 0);
+  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, &outdata, 0);
   if (err) return err;
+
+  if (outdata.size > out->size)
+    return MKEY_ERR_OVERFLOW;
+  memcpy(out->data, outdata.data, outdata.size);
+  out->size = outdata.size;
 
   return 0;
 }
