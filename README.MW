@@ -1,0 +1,22 @@
+# MiniWorld README for mkey
+
+Dependencies: gmake krb4 heimdal
+Build:        gmake all install
+
+This collection contains a server, client library, and command-line tool
+for managing encryption keys; specifically the Kerberos database master
+key(s).  The mkey server holds keys in mlock()'d memory, and performs
+encryption operations as requested by the KDC and other tools.  In this
+manner, the actual master key need never be stored on disk.
+
+NB: This collection has a circular dependency on 'heimdal'.  In particular,
+the mkey server and client need krb5 headers and libraries provided by the
+heimdal collection; libhdb, which manages the Heimdal KDC database, depends
+on libmkey.
+
+To bootstrap, build and install libmkey.so and the headers first, then
+go build heimdal, and finally come back and build the rest of mkey.
+To acheive this, you will want to first manually compile the mkey_err
+error tables, using the compile_et from krb4.  Then 'gmake libmkey.so.0',
+and manually install the shared library and headers.  You can then build
+and release heimdal, followed by the rest of mkey.

@@ -35,11 +35,28 @@ V=0
 
 PROGRAMS = mkey mkeyd
 LIBRARIES = libmkey.so.$V
+HEADERS = libmkey.h mkey_err.h
 
-all: ${PROGRAMS} ${LIBRARIES}
+all: ${PROGRAMS} ${LIBRARIES} ${HEADERS}
 
 clean:
 	-rm -f ${PROGRAMS} ${LIBRARIES} *.o mkey_err.c mkey_err.h
+
+install: ${DESTDIR}/usr/local/bin/mkey \
+         ${DESTDIR}/usr/local/libexec/mkeyd \
+         ${DESTDIR}/usr/local/lib/libmkey.so.$V \
+         ${HEADERS:%=${CMNDEST}/usr/local/include/%}
+
+CPRULE = test -d $(dir $@) || mkdir -p $(dir $@); cp $< $@
+${DESTDIR}/usr/local/bin/mkey          : mkey          ; ${CPRULE}
+${DESTDIR}/usr/local/libexec/mkeyd     : mkeyd         ; ${CPRULE}
+${DESTDIR}/usr/local/lib/libmkey.so.$V : libmkey.so.$V
+	${CPRULE}
+	-rm -f ${DESTDIR}/usr/local/lib/libmkey.so
+	ln -s libmkey.so.$V ${DESTDIR}/usr/local/lib/libmkey.so
+
+${CMNDEST}/usr/local/include/% : % ; ${CPRULE}
+
 
 libmkey.so.$V: libmkey.o mkey_err.o
 	${LD} ${LDFLAGS} -G -h $@ -o $@ $^ -ldoor -lcom_err
