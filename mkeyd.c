@@ -24,6 +24,7 @@
  * 
  * $Id$
  * master key server
+ * usage: mkeyd [sock_name]
  */
 
 #include <sys/types.h>
@@ -89,6 +90,7 @@ struct taginfo {
   pthread_rwlock_t lock;
 };
 
+static char *sock_name = MKEY_SOCKET;
 static struct taginfo *taglist;
 static int max_slot;
 static pthread_rwlock_t masterlock;
@@ -579,10 +581,10 @@ static void mainloop(void)
     exit(1);
   }
 
-  unlink(MKEY_DOOR);
-  doorfd = open(MKEY_DOOR, O_CREAT|O_RDWR, 0600);
+  unlink(sock_name);
+  doorfd = open(sock_name, O_CREAT|O_RDWR, 0600);
   if (doorfd < 0) {
-    syslog(LOG_ERR, "create %s: %s", MKEY_DOOR, strerror(errno));
+    syslog(LOG_ERR, "create %s: %s", sock_name, strerror(errno));
     exit(1);
   }
   fchmod(doorfd, 0600);
@@ -593,14 +595,14 @@ static void mainloop(void)
     syslog(LOG_ERR, "door_create: %s", strerror(errno));
     exit(1);
   }
-  if (fattach(doorfd, MKEY_DOOR) < 0) {
-    syslog(LOG_ERR, "fattach %s: %s", MKEY_DOOR, strerror(errno));
+  if (fattach(doorfd, sock_name) < 0) {
+    syslog(LOG_ERR, "fattach %s: %s", sock_name, strerror(errno));
     exit(1);
   }
 
   for (;;) {
     pthread_cond_wait(&exit_cv, &exit_mutex);
-    unlink(MKEY_DOOR);
+    unlink(sock_name);
   }
 }
 
@@ -618,6 +620,8 @@ int main(int argc, char **argv)
 
   argv0 = strrchr(argv[0], '/');
   argv0 = argv0 ? argv0 + 1 : argv[0];
+
+  if (argc > 1) sock_name = argv[1];
 
   openlog(argv0, LOG_PID, MKEY_FACILITY);
   syslog(LOG_INFO, "mkeyd %s", "$Revision$");

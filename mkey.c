@@ -222,7 +222,7 @@ static int do_verify(int argc, char **argv)
   if (err) {
     fprintf(stderr, "%s %d: %s\n", argv[1], kvno, error_message(err));
   } else {
-    printf("%s %d: key removed\n", argv[1], kvno);
+    printf("%s %d: key exists\n", argv[1], kvno);
   }
   return 0;
 }
@@ -349,6 +349,12 @@ static SL_cmd commands[] = {
 };
 
 
+void usage() {
+  fprintf(stderr, "Usage: mkey [-s sockname] command [args...]\n");
+  exit(1);
+}
+
+
 int main(int argc, char **argv)
 {
   krb5_error_code kerr;
@@ -357,6 +363,17 @@ int main(int argc, char **argv)
   initialize_heim_error_table();
   initialize_mkey_error_table();
 
+  if (argc > 1) {
+    if (!strcmp(argv[1], "-h")) {
+      usage();
+    } else if (!strcmp(argv[1], "-s") && argc > 2) {
+      mkey_set_socket_name(argv[2]);
+      argv += 2;
+      argc -= 2;
+    } else if (argv[1][0] == '-') {
+      usage();
+    }
+  }
   kerr = krb5_init_context(&krb5ctx);
   if (kerr) {
     fprintf(stderr, "krb5_init_context: %s\n", error_message(kerr));

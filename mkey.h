@@ -37,7 +37,7 @@
 #define MKEY_OP_VERIFY_KEY  7
 
 #ifdef USE_DOORS
-#define MKEY_DOOR           "/var/run/mkey_door"  /* socket filename */
+#define MKEY_SOCKET         "/var/run/mkey_door"  /* socket filename */
 #else
 #define MKEY_SOCKET         "/var/run/mkey.sock"  /* socket filename */
 #endif

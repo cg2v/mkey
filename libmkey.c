@@ -42,6 +42,7 @@
 #include "mkey.h"
 
 
+static char *mkey_sock_name = 0;
 static char req_buf[MKEY_MAXSIZE + 1];
 static char rep_buf[MKEY_MAXSIZE + 1];
 static MKey_Integer global_cookie = 0;
@@ -65,12 +66,14 @@ static MKey_Error do_request(MKey_Integer cookie, int reqlen,
   MKey_Error err, errcode, lasterr;
   door_arg_t arg;
   int try;
+  char *sock_name;
 
+  sock_name = mkey_sock_name ? mkey_sock_name : MKEY_SOCKET;
   lasterr = MKEY_ERR_TIMEOUT;
   for (try = 0; try < 3;) {
 #ifdef USE_DOORS
     if (mkeyd_sock < 0) {
-      mkeyd_sock = open(MKEY_DOOR, O_RDONLY);
+      mkeyd_sock = open(sock_name, O_RDONLY);
       if (mkeyd_sock < 0) return errno;
     }
 
@@ -343,4 +346,16 @@ MKey_Error mkey_shutdown(void)
   err = _mkey_decode(repptr, replen, 0, 0, 0, 0, 0, 0);
   if (err) return err;
   return 0;
+}
+
+
+void mkey_set_socket_name(char *sock_name)
+{
+  if (sock_name) {
+    sock_name = strdup(sock_name);
+    if (!sock_name) return;
+  }
+
+  if (mkey_sock_name) free(mkey_sock_name);
+  mkey_sock_name = sock_name;
 }

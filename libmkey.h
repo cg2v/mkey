@@ -54,3 +54,4 @@ extern MKey_Error mkey_find_largest_kvno(char *tag, MKey_Integer *kvno);
 extern MKey_Error mkey_list_keys(char *tag, MKey_Integer *nkeys, MKey_KeyInfo *keys);
 extern MKey_Error mkey_list_tag(MKey_Integer tagid, char *tag, int bufsize);
 extern MKey_Error mkey_shutdown(void);
+extern void mkey_set_socket_name(char *);
