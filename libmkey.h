@@ -63,6 +63,7 @@ extern MKey_Error mkey_get_metakey_info(char *tag, MKey_Integer *state,
 extern MKey_Error mkey_unseal_keys(char *tag, MKey_Integer enctype, MKey_DataBlock *key);
 extern MKey_Error mkey_set_metakey(char *tag, MKey_Integer kvno,
                                    MKey_Integer enctype, MKey_DataBlock *key);
+extern MKey_Error mkey_store_keys(char *tag);
 
 extern MKey_Error mkey_shutdown(void);
 

@@ -213,3 +213,12 @@ ETYPE_TO_STRING (13)
 
    Returns a string containing the name of the specified Kerberos
    encryption type.
+
+
+STORE_KEYS (14)
+   String    tag
+   ========
+   -
+
+   Store keys for the specified tag to a file.  Keys are encrypted in the
+   current meta key for the specified tag, which must be set.

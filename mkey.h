@@ -41,8 +41,10 @@
 #define MKEY_OP_SET_METAKEY        11
 #define MKEY_OP_STRING_TO_ETYPE    12
 #define MKEY_OP_ETYPE_TO_STRING    13
+#define MKEY_OP_STORE_KEYS         14
 
 #define MKEY_KU_META 0x4D4B6579
+#define MKEY_KU_CHAL 0x4D4B4368
 
 #ifdef USE_DOORS
 #define MKEY_SOCKET         "/var/run/mkey_door"  /* socket filename */

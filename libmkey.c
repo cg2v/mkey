@@ -483,6 +483,29 @@ MKey_Error mkey_set_metakey(char *tag, MKey_Integer kvno,
 }
 
 
+MKey_Error mkey_store_keys(char *tag)
+{
+  MKey_Integer cookie;
+  MKey_Error err;
+  int reqlen, replen;
+  char *repptr;
+
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_STORE_KEYS,
+                     0, 0, 0, tag);
+  if (err) return err;
+
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, 0, 0);
+  if (err) return err;
+
+  return 0;
+}
+
+
 MKey_Error mkey_shutdown(void)
 {
   MKey_Integer cookie;
