@@ -983,7 +983,7 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
 
   /* write the challenge */
   memset(&ktent, 0, sizeof(ktent));
-  err = krb5_make_principal(ctx, &ktent.principal, "MKEY:CHAL", tag, 0);
+  err = krb5_make_principal(ctx, &ktent.principal, "MKEY:CHAL", tagname, 0);
   if (err) {
     krb5_kt_close(ctx, kt);
     unlink(filename1);
@@ -994,10 +994,22 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
     return err;
   }
   ktent.keyblock.keyvalue = tag->challenge;
+  err = krb5_kt_add_entry(ctx, kt, &ktent);
+  free(ktent.keyblock.keyvalue.data);
+  if (err) {
+    krb5_kt_close(ctx, kt);
+    unlink(filename1);
+    pthread_rwlock_unlock(&tag->lock);
+    krb5_crypto_destroy(ctx, crypto);
+    krb5_free_principal(ctx, ktent.principal);
+    free(ktname);
+    free(filename2);
+    return err;
+  }
   krb5_free_principal(ctx, ktent.principal);
 
   memset(&ktent, 0, sizeof(ktent));
-  err = krb5_make_principal(ctx, &ktent.principal, "MKEY:KEY", tag, 0);
+  err = krb5_make_principal(ctx, &ktent.principal, "MKEY:KEY", tagname, 0);
   if (err) {
     krb5_kt_close(ctx, kt);
     unlink(filename1);
