@@ -27,7 +27,10 @@
  * usage: mkeyd [sock_name]
  */
 
+#define _XOPEN_SOURCE 500
+
 #include <sys/types.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <stdlib.h>
@@ -38,7 +41,9 @@
 #include <fcntl.h>
 #include <stropts.h>
 #include <pthread.h>
+#ifdef USE_DOORS
 #include <door.h>
+#endif
 #include <errno.h>
 
 #include <krb5.h>
@@ -1440,7 +1445,11 @@ static void mainloop(void)
 
 #else /* !USE_DOORS */
 
-#error write some code
+static void mainloop(void)
+{
+  syslog(LOG_ERR, "write some code!");
+  exit(1);
+}
 
 #endif /* USE_DOORS */
 

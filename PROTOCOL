@@ -2,12 +2,12 @@
 The MKEY protocol is a simple request-response datagram protocol.  It
 contains no authentication or other security measures, and is intended
 to be run _only_ over a access-controlled local channel such as a door
-or a UNIX domain socket.  Because communication is always between entities
-on the same machine, native byte order is used.
+or a UNIX domain socket.  Because communication may be forwarded over
+a (protected) TCP connection, network byte order is used.
 
 Three data types are used in this protocol:
 
-- An Integer is a 32-bit number in native byte order
+- An Integer is a 32-bit number in network byte order
 - A DataBlock consists of an Integer count, followed by the
   specified number of bytes of data.
 - A String consists of an arbitrary number of printable characters,
@@ -42,11 +42,10 @@ successful, the error code is zero, and the format of the out_params is
 dependent on the request code used.  If the request was not successful,
 then the error code is non-zero, and no out_params are present.
 
-
-
-in the corresponding request.  On success, the error code is zero, and
-the format of output parameters is controlled by the request code.  On
-failure, the error code is nonzero, and there are no output parameters.
+When communication is relayed over a TCP connection, each request or
+response packet is preceeded by an Integer indicating the total length
+of the packet; this value is used by the relay agent to determine how
+much data to read, and is then discarded.
 
 
 The following requests are supported:

@@ -40,6 +40,7 @@ MKey_Error _mkey_encode(void *buf, int *buflen,
 {
   unsigned char *bytes = buf;
   int pktlen, offset, i;
+  MKey_Integer netint;
 
   pktlen = 4 * (2 + nints);
   if (data)   pktlen += 4 + data->size;
@@ -47,14 +48,27 @@ MKey_Error _mkey_encode(void *buf, int *buflen,
   if (pktlen > *buflen) return MKEY_ERR_TOO_BIG;
 
   offset = 0;
-  memcpy(bytes + offset, &cookie, 4);               offset += 4;
-  memcpy(bytes + offset, &code, 4);                 offset += 4;
+
+  netint = htonl(cookie);
+  memcpy(bytes + offset, &netint, 4);
+  offset += 4;
+
+  netint = htonl(code);
+  memcpy(bytes + offset, &netint, 4);
+  offset += 4;
+
   for (i = 0; i < nints; i++) {
-    memcpy(bytes + offset, ints+i, 4);              offset += 4;
+    netint = htonl(ints[i]);
+    memcpy(bytes + offset, &netint, 4);
+    offset += 4;
   }
+
   if (data) {
-    memcpy(bytes + offset, &data->size, 4);         offset += 4;
-    memcpy(bytes + offset, data->data, data->size); offset += data->size;
+    netint = htonl(data->size);
+    memcpy(bytes + offset, &netint, 4);
+    offset += 4;
+    memcpy(bytes + offset, data->data, data->size);
+    offset += data->size;
   }
   if (string) {
     strcpy((char *)(bytes + offset), string);
@@ -68,9 +82,13 @@ MKey_Error _mkey_decode_header(void *buf, int buflen,
                                MKey_Integer *cookie, MKey_Integer *code)
 {
   unsigned char *bytes = buf;
+  MKey_Integer netint;
+
   if (buflen < 8) return MKEY_ERR_MSG_FORMAT;
-  memcpy(cookie, bytes, 4);
-  memcpy(code, bytes + 4, 4);
+  memcpy(&netint, bytes, 4);
+  *cookie = ntohl(netint);
+  memcpy(&netint, bytes + 4, 4);
+  *code = ntohl(netint);
   return 0;
 }
 
@@ -82,18 +100,22 @@ MKey_Error _mkey_decode(void *buf, int buflen,
 {
   unsigned char *bytes = buf;
   int pktlen, offset, i;
-  MKey_Integer datasize, keycount;
+  MKey_Integer datasize, keycount, netint;
 
   offset = 8; /* skip cookie and code */
   if (offset > buflen) return MKEY_ERR_MSG_FORMAT;
 
   for (i = 0; i < nints; i++) {
     if (buflen - offset < 4) return MKEY_ERR_MSG_FORMAT;
-    memcpy(ints+i, bytes + offset, 4);              offset += 4;
+    memcpy(&netint, bytes + offset, 4);
+    offset += 4;
+    ints[i] = ntohl(netint);
   }
   if (data) {
     if (buflen - offset < 4) return MKEY_ERR_MSG_FORMAT;
-    memcpy(&datasize, bytes + offset, 4);           offset += 4;
+    memcpy(&netint, bytes + offset, 4);
+    offset += 4;
+    datasize = ntohl(netint);
 
     if (buflen - offset < datasize) return MKEY_ERR_MSG_FORMAT;
     data->size = datasize;
@@ -102,14 +124,20 @@ MKey_Error _mkey_decode(void *buf, int buflen,
   }
   if (nkeys) {
     if (buflen - offset < 4) return MKEY_ERR_MSG_FORMAT;
-    memcpy(&keycount, bytes + offset, 4);           offset += 4;
+    memcpy(&netint, bytes + offset, 4);
+    offset += 4;
+    keycount = ntohl(netint);
 
     if (keycount > *nkeys) return MKEY_ERR_OVERFLOW;
     *nkeys = keycount;
     for (i = 0; i < keycount; i++) {
       if (buflen - offset < 8) return MKEY_ERR_MSG_FORMAT;
-      memcpy(&keys[i].kvno,    bytes + offset, 4);  offset += 4;
-      memcpy(&keys[i].enctype, bytes + offset, 4);  offset += 4;
+      memcpy(&netint, bytes + offset, 4);
+      offset += 4;
+      keys[i].kvno = ntohl(netint);
+      memcpy(&netint, bytes + offset, 4);
+      offset += 4;
+      keys[i].enctype = ntohl(netint);
     }
   }
   if (string) {

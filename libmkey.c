@@ -29,12 +29,16 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 #include <time.h>
 #include <fcntl.h>
+#include <netinet/in.h>
+#ifdef USE_DOORS
 #include <door.h>
+#endif
 #include <errno.h>
 
 #include "mkey_err.h"
@@ -47,6 +51,7 @@ static char req_buf[MKEY_MAXSIZE + 1];
 static char rep_buf[MKEY_MAXSIZE + 1];
 static MKey_Integer global_cookie = 0;
 static int mkeyd_sock = -1;
+static int use_mkrelay = 0;
 
 
 static MKey_Integer getcookie()
@@ -59,54 +64,142 @@ static MKey_Integer getcookie()
   return global_cookie;
 }
 
-static MKey_Error do_request(MKey_Integer cookie, int reqlen,
-                             int *replen, char **repptr)
+MKey_Error _mkey_do_request(MKey_Integer cookie, char *reqBUF, int reqlen,
+                            char *repBUF, int *replen, char **repptr)
 {
-  MKey_Integer rcookie;
+  MKey_Integer rcookie, pktsize;
   MKey_Error err, errcode, lasterr;
+#ifdef USE_DOORS
   door_arg_t arg;
-  int try;
+#endif
+  int try, xerrno, n, port;
   char *sock_name;
+  struct sockaddr_in relay;
 
   sock_name = mkey_sock_name ? mkey_sock_name : MKEY_SOCKET;
   lasterr = MKEY_ERR_TIMEOUT;
   for (try = 0; try < 3;) {
-#ifdef USE_DOORS
-    if (mkeyd_sock < 0) {
-      mkeyd_sock = open(sock_name, O_RDONLY);
-      if (mkeyd_sock < 0) return errno;
-    }
+    if (use_mkrelay) {
+      if (mkeyd_sock < 0) {
+        mkeyd_sock = socket(PF_INET, SOCK_STREAM, 0);
+        if (mkeyd_sock < 0) return errno;
 
-    arg.data_ptr = req_buf;
-    arg.data_size = reqlen;
-    arg.desc_ptr = 0;
-    arg.desc_num = 0;
-    arg.rbuf = rep_buf;
-    arg.rsize = MKEY_MAXSIZE;
+        if (mkey_sock_name && mkey_sock_name[0] == ':') {
+          port = atol(mkey_sock_name + 1);
+          if (port < 0 || port > 0xffff) port = MKEY_RELAY_PORT;
+        } else port = MKEY_RELAY_PORT;
+        memset(&relay, 0, sizeof(relay));
+        relay.sin_family = AF_INET;
+        relay.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        relay.sin_port = htons(port);
+        if (connect(mkeyd_sock, &relay, sizeof(relay))) {
+          xerrno = errno;
+          close(mkeyd_sock);
+          mkeyd_sock = -1;
+          return xerrno;
+        }
+      }
 
-    if (door_call(mkeyd_sock, &arg)) {
-      switch (errno) {
-        default:        return errno;
-        case EOVERFLOW: return MKEY_ERR_TOO_BIG;
-        case EINTR:     continue;
-        case EBADF:
-        case EAGAIN:
+      /* Send off our request */
+      pktsize = htonl(reqlen);
+      n = send(mkeyd_sock, &pktsize, sizeof(pktsize),
+               MSG_DONTWAIT|MSG_NOSIGNAL);
+      if (n < 0 && errno == EINTR) continue;
+      if (n == sizeof(pktsize)) {
+        for (;;) {
+          n = send(mkeyd_sock, reqBUF, reqlen, MSG_DONTWAIT|MSG_NOSIGNAL);
+          if (n >= 0 || errno != EINTR) break;
+        }
+      }
+      else if (n >= 0) n = errno = -1;
+      if (n != reqlen) {
+        switch (errno) {
+          default:        return errno;
+          case -1:
+          case EPIPE:
+          case EBADF:
+          case EAGAIN:
+            try++;
+            close(mkeyd_sock);
+            mkeyd_sock = -1;
+            continue;
+        }
+      }
+
+      pktsize = 1;
+      for (;;) {
+        n = recv(mkeyd_sock, &pktsize, sizeof(pktsize),
+                 MSG_WAITALL|MSG_NOSIGNAL);
+        if (n >= 0 || errno != EINTR) break;
+      }
+      if (n == sizeof(pktsize)) {
+        pktsize = ntohl(pktsize);
+        if (pktsize > MKEY_MAXSIZE) {
+          /* overflow; try again */
+          lasterr = MKEY_ERR_TOO_BIG;
           try++;
           close(mkeyd_sock);
           mkeyd_sock = -1;
           continue;
+        }
+        for (;;) {
+          n = recv(mkeyd_sock, repBUF, pktsize, MSG_WAITALL|MSG_NOSIGNAL);
+          if (n >= 0 || errno != EINTR) break;
+        }
+      } else if (n >= 0) n = errno = -1;
+      if (n != pktsize) {
+        switch (errno) {
+          default:        return errno;
+          case -1:
+          case EPIPE:
+          case EBADF:
+          case EAGAIN:
+            try++;
+            close(mkeyd_sock);
+            mkeyd_sock = -1;
+            continue;
+        }
       }
-    }
-    if (arg.rbuf != rep_buf) {
-      munmap(arg.rbuf, arg.rsize);
-      return MKEY_ERR_TOO_BIG;
-    }
+      *repptr = repBUF;
+      *replen = pktsize;
+    } else {
+#ifdef USE_DOORS
+      if (mkeyd_sock < 0) {
+        mkeyd_sock = open(sock_name, O_RDONLY);
+        if (mkeyd_sock < 0) return errno;
+      }
 
-    *repptr = arg.data_ptr;
-    *replen = arg.data_size;
+      arg.data_ptr = reqBUF;
+      arg.data_size = reqlen;
+      arg.desc_ptr = 0;
+      arg.desc_num = 0;
+      arg.rbuf = repBUF;
+      arg.rsize = MKEY_MAXSIZE;
+
+      if (door_call(mkeyd_sock, &arg)) {
+        switch (errno) {
+          default:        return errno;
+          case EOVERFLOW: return MKEY_ERR_TOO_BIG;
+          case EINTR:     continue;
+          case EBADF:
+          case EAGAIN:
+            try++;
+            close(mkeyd_sock);
+            mkeyd_sock = -1;
+            continue;
+        }
+      }
+      if (arg.rbuf != repBUF) {
+        munmap(arg.rbuf, arg.rsize);
+        return MKEY_ERR_TOO_BIG;
+      }
+
+      *repptr = arg.data_ptr;
+      *replen = arg.data_size;
 #else /* !USE_DOORS */
-#error write some code
+      return MKEY_ERR_NO_DIRECT;
 #endif /* USE_DOORS */
+    }
 
     try++;
 
@@ -124,6 +217,12 @@ static MKey_Error do_request(MKey_Integer cookie, int reqlen,
     return errcode;
   }
   return lasterr;
+}
+
+static MKey_Error do_request(MKey_Integer cookie, int reqlen,
+                             int *replen, char **repptr)
+{
+  return _mkey_do_request(cookie, req_buf, reqlen, rep_buf, replen, repptr);
 }
 
 
@@ -560,4 +659,5 @@ void mkey_set_socket_name(char *sock_name)
 
   if (mkey_sock_name) free(mkey_sock_name);
   mkey_sock_name = sock_name;
+  use_mkrelay = (sock_name[0] == ':');
 }

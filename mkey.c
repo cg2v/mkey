@@ -27,6 +27,7 @@
  */
 
 
+#include <sys/resource.h>
 #include <sys/mman.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -360,8 +361,10 @@ static int do_list(int argc, char **argv)
     err = mkey_list_tag(i, tagbuf, sizeof(tagbuf));
     if (err == MKEY_ERR_TAG_RANGE) break;
     if (err == MKEY_ERR_NO_TAG) continue;
-    if (err) fprintf(stderr, "tag %d: %s\n", i, error_message(err));
-    else list_keys_for_tag(tagbuf);
+    if (err) {
+      fprintf(stderr, "tag %d: %s\n", i, error_message(err));
+      break;
+    }
   }
 
   return 0;
@@ -705,7 +708,10 @@ int main(int argc, char **argv)
   }
   if (mlockall(MCL_CURRENT | MCL_FUTURE)) {
     fprintf(stderr, "mlockall: %s\n", strerror(errno));
-    exit(1);
+    if (errno == EPERM)
+      fprintf(stderr, "WARNING! Unable to lock pages in memory!\n");
+    else
+      exit(1);
   }
   memset(&rl, 0, sizeof(rl));
   if (setrlimit(RLIMIT_CORE, &rl)) {

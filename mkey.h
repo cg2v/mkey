@@ -57,6 +57,7 @@
 #else
 #define MKEY_SOCKET         "/var/run/mkey.sock"  /* socket filename */
 #endif
+#define MKEY_RELAY_PORT     1357                  /* TCP port for relay */
 #define MKEY_FACILITY       LOG_LOCAL1            /* syslog facility */
 #define MKEY_MAXSIZE        4096
 #define MKEY_HDRSIZE        8
@@ -68,3 +69,5 @@ extern MKey_Error _mkey_decode_header(void *, int,
 extern MKey_Error _mkey_decode(void *, int, int, MKey_Integer *,
                                MKey_Integer *, MKey_KeyInfo *,
                                MKey_DataBlock *, char **);
+extern MKey_Error _mkey_do_request(MKey_Integer, char *, int,
+                                   char *, int *, char **);

@@ -50,4 +50,5 @@ error_code WRONG_KEY,            "incorrect meta key"
 error_code NOT_SEALED,           "master keys are not sealed"
 error_code NO_META,              "meta key is not set"
 error_code LOADING,              "master key load in progress"
+error_code NO_DIRECT,            "direct connection not supported"
 end
