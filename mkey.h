@@ -55,10 +55,10 @@
 #define MKEY_MAXSIZE        4096
 #define MKEY_HDRSIZE        8
 
-extern MKey_Error _mkey_encode(char *, int *, MKey_Integer, MKey_Integer,
+extern MKey_Error _mkey_encode(void *, int *, MKey_Integer, MKey_Integer,
                                int, MKey_Integer *, MKey_DataBlock *, char *);
-extern MKey_Error _mkey_decode_header(char *, int,
+extern MKey_Error _mkey_decode_header(void *, int,
                                       MKey_Integer *, MKey_Integer *);
-extern MKey_Error _mkey_decode(char *, int, int, MKey_Integer *,
+extern MKey_Error _mkey_decode(void *, int, int, MKey_Integer *,
                                MKey_Integer *, MKey_KeyInfo *,
                                MKey_DataBlock *, char **);

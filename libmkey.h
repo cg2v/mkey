@@ -32,7 +32,7 @@ typedef int32_t MKey_Error;
 typedef int32_t MKey_Integer;
 typedef struct {
   MKey_Integer size;
-  char *data;
+  void *data;
 } MKey_DataBlock;
 
 typedef struct {

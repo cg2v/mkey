@@ -901,7 +901,8 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
   krb5_crypto crypto;
   krb5_keytab_entry ktent;
   krb5_keytab kt;
-  char *tagname, *filename, *filename2, rbuf[128];
+  char *ktname, *filename1, *filename2;
+  char *tagname, rbuf[128];
   int l;
 
   err = _mkey_decode(reqbuf, reqlen, 0, 0, 0, 0, 0, &tagname);
@@ -914,32 +915,32 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
   if (err) return err;
 
   l = strlen(keytab_dir) + strlen(tagname) + 32;
-  filename = malloc(l);
-  if (!filename) return MKEY_ERR_NO_MEM;
+  ktname = malloc(l);
+  if (!ktname) return MKEY_ERR_NO_MEM;
   filename2 = malloc(l);
   if (!filename2) {
-    free(filename);
+    free(ktname);
     return MKEY_ERR_NO_MEM;
   }
 
   /* begin critical section */
   err = pthread_rwlock_wrlock(&tag->lock);
   if (err) {
-    free(filename);
+    free(ktname);
     free(filename2);
     return err;
   }
 
   if (tag->meta_state > 1) {
     pthread_rwlock_unlock(&tag->lock);
-    free(filename);
+    free(ktname);
     free(filename2);
     return MKEY_ERR_SEALED;
   }
 
   if (tag->meta_state < 1) {
     pthread_rwlock_unlock(&tag->lock);
-    free(filename);
+    free(ktname);
     free(filename2);
     return MKEY_ERR_NO_META;
   }
@@ -947,7 +948,7 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
   err = krb5_crypto_init(ctx, &tag->meta_key, tag->meta_enctype, &crypto);
   if (err) {
     pthread_rwlock_unlock(&tag->lock);
-    free(filename);
+    free(ktname);
     free(filename2);
     return err;
   }
@@ -960,21 +961,22 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
     if (err) {
       memset(&tag->challenge, 0, sizeof(tag->challenge));
       pthread_rwlock_unlock(&tag->lock);
-      free(filename);
+      free(ktname);
       free(filename2);
       return err;
     }
   }
 
   /* open the keytab */
-  sprintf(filename,  "FILE:%s/mkeytab.%s.NEW", keytab_dir, tagname);
-  sprintf(filename2, "FILE:%s/mkeytab.%s",     keytab_dir, tagname);
-  unlink(filename);
-  err = krb5_kt_resolve(ctx, filename, &kt);
+  sprintf(ktname,  "FILE:%s/mkeytab.%s.NEW", keytab_dir, tagname);
+  sprintf(filename2, "%s/mkeytab.%s",         keytab_dir, tagname);
+  filename1 = ktname + 5;
+  unlink(filename1);
+  err = krb5_kt_resolve(ctx, ktname, &kt);
   if (err) {
     krb5_crypto_destroy(ctx, crypto);
     pthread_rwlock_unlock(&tag->lock);
-    free(filename);
+    free(ktname);
     free(filename2);
     return err;
   }
@@ -984,10 +986,10 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
   err = krb5_make_principal(ctx, &ktent.principal, "MKEY:CHAL", tag, 0);
   if (err) {
     krb5_kt_close(ctx, kt);
-    unlink(filename);
+    unlink(filename1);
     pthread_rwlock_unlock(&tag->lock);
     krb5_crypto_destroy(ctx, crypto);
-    free(filename);
+    free(ktname);
     free(filename2);
     return err;
   }
@@ -998,10 +1000,10 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
   err = krb5_make_principal(ctx, &ktent.principal, "MKEY:KEY", tag, 0);
   if (err) {
     krb5_kt_close(ctx, kt);
-    unlink(filename);
+    unlink(filename1);
     pthread_rwlock_unlock(&tag->lock);
     krb5_crypto_destroy(ctx, crypto);
-    free(filename);
+    free(ktname);
     free(filename2);
     return err;
   }
@@ -1010,11 +1012,11 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
     err = pthread_mutex_lock(&key->mutex);
     if (err) {
       krb5_kt_close(ctx, kt);
-      unlink(filename);
+      unlink(filename1);
       pthread_rwlock_unlock(&tag->lock);
       krb5_crypto_destroy(ctx, crypto);
       krb5_free_principal(ctx, ktent.principal);
-      free(filename);
+      free(ktname);
       free(filename2);
       return err;
     }
@@ -1033,11 +1035,11 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
     if (err) {
       pthread_mutex_unlock(&key->mutex);
       krb5_kt_close(ctx, kt);
-      unlink(filename);
+      unlink(filename1);
       pthread_rwlock_unlock(&tag->lock);
       krb5_crypto_destroy(ctx, crypto);
       krb5_free_principal(ctx, ktent.principal);
-      free(filename);
+      free(ktname);
       free(filename2);
       return err;
     }
@@ -1045,12 +1047,12 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
     err = pthread_mutex_unlock(&key->mutex);
     if (err) {
       krb5_kt_close(ctx, kt);
-      unlink(filename);
+      unlink(filename1);
       pthread_rwlock_unlock(&tag->lock);
       krb5_crypto_destroy(ctx, crypto);
       free(ktent.keyblock.keyvalue.data);
       krb5_free_principal(ctx, ktent.principal);
-      free(filename);
+      free(ktname);
       free(filename2);
       return err;
     }
@@ -1061,11 +1063,11 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
     free(ktent.keyblock.keyvalue.data);
     if (err) {
       krb5_kt_close(ctx, kt);
-      unlink(filename);
+      unlink(filename1);
       pthread_rwlock_unlock(&tag->lock);
       krb5_crypto_destroy(ctx, crypto);
       krb5_free_principal(ctx, ktent.principal);
-      free(filename);
+      free(ktname);
       free(filename2);
       return err;
     }
@@ -1076,16 +1078,16 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
   /* close the keytab */
   err = krb5_kt_close(ctx, kt);
   if (err) {
-    unlink(filename);
+    unlink(filename1);
     pthread_rwlock_unlock(&tag->lock);
-    free(filename);
+    free(ktname);
     free(filename2);
     return err;
   }
 
   /* rename it into place */
-  err = rename(filename, filename2);
-  free(filename);
+  err = rename(filename1, filename2);
+  free(ktname);
   free(filename2);
   if (err) {
     pthread_rwlock_unlock(&tag->lock);
@@ -1096,6 +1098,7 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
   if (err) return err;
   /* end critical section */
 
+  err = _mkey_encode(repbuf, replen, cookie, 0, 0, 0, 0, 0);
   return 0;
 }
 
