@@ -42,4 +42,5 @@ error_code TOO_BIG,              "mkey message exceeds max size"
 error_code OVERFLOW,             "mkey reply data exceeds buffer size"
 error_code TIMEOUT,              "mkey server not responding"
 error_code REP_COOKIE,           "mkey reply cookie does not match"
+error_code NO_MEM,               "mkey server out of memory"
 end

@@ -55,7 +55,7 @@ mkey_err.c mkey_err.h: mkey_err.et
 
 
 mkeyd: mkeyd.o libmkey.so.$V
-	${CC} -mt ${LDFLAGS} -o $@ $^ -ldoor
+	${CC} -mt ${LDFLAGS} -o $@ $^ -ldoor -lpthread -lkrb5
 
 mkeyd.o: mkeyd.c mkey.h mkey_err.h
 	${CC} -mt ${CFLAGS} -c -o $@ $<

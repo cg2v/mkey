@@ -135,7 +135,7 @@ MKey_Error mkey_encrypt(char *tag, MKey_Integer kvno,
   int reqlen, replen;
   char *repptr;
 
-  reqlen = MKEY_HDRSIZE + 8 + in->size + strlen(tag);
+  reqlen = MKEY_HDRSIZE + 8 + in->size + strlen(tag) + 1;
   if (reqlen > MKEY_MAXSIZE)
     return MKEY_ERR_TOO_BIG;
 
@@ -169,7 +169,7 @@ MKey_Error mkey_decrypt(char *tag, MKey_Integer kvno,
   int reqlen, replen;
   char *repptr;
 
-  reqlen = MKEY_HDRSIZE + 8 + in->size + strlen(tag);
+  reqlen = MKEY_HDRSIZE + 8 + in->size + strlen(tag) + 1;
   if (reqlen > MKEY_MAXSIZE)
     return MKEY_ERR_TOO_BIG;
 
@@ -202,7 +202,7 @@ MKey_Error mkey_add_key(char *tag, MKey_Integer kvno,
   int reqlen, replen;
   char *repptr;
 
-  reqlen = MKEY_HDRSIZE + 12 + key->size + strlen(tag);
+  reqlen = MKEY_HDRSIZE + 12 + key->size + strlen(tag) + 1;
   if (reqlen > MKEY_MAXSIZE)
     return MKEY_ERR_TOO_BIG;
 
@@ -228,7 +228,7 @@ MKey_Error mkey_remove_key(char *tag, MKey_Integer kvno)
   int reqlen, replen;
   char *repptr;
 
-  reqlen = MKEY_HDRSIZE + 4 + strlen(tag);
+  reqlen = MKEY_HDRSIZE + 4 + strlen(tag) + 1;
   if (reqlen > MKEY_MAXSIZE)
     return MKEY_ERR_TOO_BIG;
 
@@ -252,7 +252,7 @@ MKey_Error mkey_list_keys(char *tag, MKey_Integer *nkeys, MKey_KeyInfo *keys)
   int reqlen, replen, i;
   char *repptr;
 
-  reqlen = MKEY_HDRSIZE + strlen(tag);
+  reqlen = MKEY_HDRSIZE + strlen(tag) + 1;
   if (reqlen > MKEY_MAXSIZE)
     return MKEY_ERR_TOO_BIG;
 
