@@ -28,6 +28,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -36,6 +37,7 @@
 #include <stropts.h>
 #include <pthread.h>
 #include <door.h>
+#include <errno.h>
 
 #include <krb5.h>
 #include <krb5_err.h>
@@ -86,6 +88,9 @@ static struct taginfo *taglist;
 static int max_slot;
 static pthread_rwlock_t masterlock;
 static pthread_key_t contextkey;
+
+static pthread_mutex_t exit_mutex;
+static pthread_cond_t exit_cv;
 
 
 static int32_t context_setup(krb5_context *ctx)
@@ -467,7 +472,8 @@ static int32_t op_list_tag(char *reqbuf, int reqlen, char *repbuf, int *replen)
 
 static int32_t op_shutdown(char *reqbuf, int reqlen, char *repbuf, int *replen)
 {
-  exit(0);
+  *replen = MKEY_HDRSIZE;
+  return pthread_cond_signal(&exit_cv);
 }
 
 
@@ -497,44 +503,60 @@ fail:
   memcpy(repbuf + 4, &err, 4);
 }
 
-/*** DOOR-SPECIFIC CODE STARTS HERE ***/
-static void handle_door_request(void *cookie, char *data, size_t datasize,
+#ifdef USE_DOORS
+static void handle_door_request(void *cookie, char *argp, size_t arg_size,
                                 door_desc_t *dp, size_t ndesc)
 {
   char repbuf[MKEY_MAXSIZE + 1];
   int replen;
 
-  proc_request(data, datasize, repbuf, &replen);
+  if (argp == DOOR_UNREF_DATA) {
+    /* time to shut down! */
+    exit(0);
+  }
+  proc_request(argp, arg_size, repbuf, &replen);
   door_return(repbuf, replen, 0, 0);
 }
 
 static void mainloop(void)
 {
-  int doorfd;
+  int doorfd, err;
 
-  doorfd = open(MKEY_SOCKET, O_CREAT|O_RDWR, 0600);
+  err = pthread_mutex_lock(&exit_mutex);
+  if (err) {
+    syslog(LOG_ERR, "unable to acquire exit mutex: %s\n", strerror(errno));
+    exit(1);
+  }
+
+  doorfd = open(MKEY_DOOR, O_CREAT|O_RDWR, 0600);
   if (doorfd < 0) {
-    syslog(LOG_ERR, "create %s: %m", MKEY_SOCKET);
+    syslog(LOG_ERR, "create %s: %s", MKEY_DOOR, strerror(errno));
     exit(1);
   }
   fchmod(doorfd, 0600);
   close(doorfd);
 
-  doorfd = door_create(handle_door_request, NULL, 0);
+  doorfd = door_create(handle_door_request, NULL, DOOR_UNREF);
   if (doorfd < 0) {
-    syslog(LOG_ERR, "door_create: %m");
+    syslog(LOG_ERR, "door_create: %s", strerror(errno));
     exit(1);
   }
-  if (fattach(doorfd, MKEY_SOCKET) < 0) {
-    syslog(LOG_ERR, "fattach %s: %m", MKEY_SOCKET);
+  if (fattach(doorfd, MKEY_DOOR) < 0) {
+    syslog(LOG_ERR, "fattach %s: %s", MKEY_DOOR, strerror(errno));
     exit(1);
   }
 
   for (;;) {
-    pause();
+    pthread_cond_wait(&exit_cv, &exit_mutex);
+    unlink(MKEY_DOOR);
   }
 }
-/*** DOOR-SPECIFIC CODE ENDS HERE ***/
+
+#else /* !USE_DOORS */
+
+#error write some code
+
+#endif /* USE_DOORS */
 
 
 int main(int argc, char **argv)
@@ -547,6 +569,10 @@ int main(int argc, char **argv)
 
   openlog(argv0, LOG_PID, MKEY_FACILITY);
   syslog(LOG_INFO, "mkeyd %s", "$Revision$");
+  err = mlockall(MCL_CURRENT | MCL_FUTURE);
+  if (err) {
+    syslog(LOG_ERR, "mlockall: %s", strerror(err));
+  }
   err = pthread_rwlock_init(&masterlock, 0);
   if (err) {
     syslog(LOG_ERR, "master lock init failed: %s", strerror(err));
@@ -557,5 +583,16 @@ int main(int argc, char **argv)
     syslog(LOG_ERR, "context key init failed: %s", strerror(err));
     exit(1);
   }
+  err = pthread_mutex_init(&exit_mutex, 0);
+  if (err) {
+    syslog(LOG_ERR, "exit mutex init failed: %s", strerror(err));
+    exit(1);
+  }
+  err = pthread_cond_init(&exit_cv, 0);
+  if (err) {
+    syslog(LOG_ERR, "exit CV init failed: %s", strerror(err));
+    exit(1);
+  }
+
   mainloop();
 }

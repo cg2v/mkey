@@ -68,9 +68,9 @@ static MKey_Error do_request(int reqlen, int *replen, char **repptr)
 
   lasterr = MKEY_ERR_TIMEOUT;
   for (try = 0; try < 3;) {
-    /*** DOOR-SPECIFIC CODE STARTS HERE ***/
+#ifdef USE_DOORS
     if (mkeyd_sock < 0) {
-      mkeyd_sock = open(MKEY_SOCKET, O_RDONLY);
+      mkeyd_sock = open(MKEY_DOOR, O_RDONLY);
       if (mkeyd_sock < 0) return errno;
     }
 
@@ -100,7 +100,9 @@ static MKey_Error do_request(int reqlen, int *replen, char **repptr)
 
     *repptr = arg.data_ptr;
     *replen = arg.data_size;
-    /*** DOOR-SPECIFIC CODE ENDS HERE ***/
+#else /* !USE_DOORS */
+#error write some code
+#endif /* USE_DOORS */
 
     try++;
 

@@ -28,7 +28,7 @@ SYS=$(shell cat /etc/mw/sysname)
 DESTDIR=/dist/sw.mkey.${SYS}
 CMNDEST=/dist/sw.mkey.common
 
-CFLAGS = -I/usr/local/include
+CFLAGS = -I/usr/local/include -DUSE_DOORS
 LDFLAGS = -L/usr/local/lib -R /usr/local/lib
 
 V=0

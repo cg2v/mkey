@@ -35,7 +35,11 @@
 #define MKEY_OP_LIST_TAG    5
 #define MKEY_OP_SHUTDOWN    6
 
+#ifdef USE_DOORS
+#define MKEY_DOOR           "/var/run/mkey_door"  /* socket filename */
+#else
 #define MKEY_SOCKET         "/var/run/mkey.sock"  /* socket filename */
+#endif
 #define MKEY_FACILITY       LOG_LOCAL1            /* syslog facility */
 #define MKEY_MAXSIZE        4096
 #define MKEY_HDRSIZE        8
