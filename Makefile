@@ -47,7 +47,7 @@ SHLDFLAGS = -L/usr/local/lib -rpath /usr/local/lib -shared -x
 PICFLAGS=-fPIC
 endif
 
-V=0
+V=1
 
 PROGRAMS = mkey mkrelay mkeyd
 LIBRARIES = libmkey.so.$V
