@@ -967,8 +967,8 @@ static MKey_Error op_store_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
   }
 
   /* open the keytab */
-  sprintf(filename,  "FILE:%s/mkeytab.%s.NEW", HDB_DB_DIR, tagname);
-  sprintf(filename2, "FILE:%s/mkeytab.%s",     HDB_DB_DIR, tagname);
+  sprintf(filename,  "FILE:%s/mkeytab.%s.NEW", keytab_dir, tagname);
+  sprintf(filename2, "FILE:%s/mkeytab.%s",     keytab_dir, tagname);
   unlink(filename);
   err = krb5_kt_resolve(ctx, filename, &kt);
   if (err) {
