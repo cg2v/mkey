@@ -15,14 +15,12 @@ clean:
 
 install: ${DESTDIR}/usr/local/bin/setup_smartcard \
          ${DESTDIR}/usr/local/bin/unlock_kdb \
-         ${DESTDIR}/usr/local/sbin/update_meta \
-         ${DESTDIR}/usr/local/share/opensc/mw.profile
+         ${DESTDIR}/usr/local/sbin/update_meta
 
 CPRULE = test -d $(dir $@) || mkdir -p $(dir $@); cp $< $@
 ${DESTDIR}/usr/local/bin/setup_smartcard     : setup_smartcard ; ${CPRULE}
 ${DESTDIR}/usr/local/bin/unlock_kdb          : unlock_kdb      ; ${CPRULE}
 ${DESTDIR}/usr/local/sbin/update_meta        : update_meta     ; ${CPRULE}
-${DESTDIR}/usr/local/share/opensc/mw.profile : mw.profile      ; ${CPRULE}
 
 update_meta: update_meta.o
 	${CC} ${LDFLAGS} -o $@ $^ -lcrypto -lmkey -lcom_err -lsocket
