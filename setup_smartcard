@@ -1,4 +1,7 @@
 #!/bin/sh
+## smartcard/setup_smartcard
+## THIS FILE IS UNDER CVS CONTROL AND DISTRIBUTED BY SUP
+## $Id$
 
 # make sure we're in a reasonable state
 pkill ocfserv

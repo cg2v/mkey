@@ -1,5 +1,7 @@
+## smartcard/mw.profile
+## THIS FILE IS UNDER CVS CONTROL AND DISTRIBUTED BY SUP
+## $Id$
 # MiniWorld PKCS15 profile for Cryptoflex cards
-# $Id$
 #
 cardinfo {
     max-pin-length	= 8;
