@@ -50,31 +50,40 @@
 
 #define MAX_LIST_KEYS 512
 
-typedef MKey_Error (*opfunc)    (MKey_Integer, char *, int, char *, int *);
-static MKey_Error op_encrypt    (MKey_Integer, char *, int, char *, int *);
-static MKey_Error op_decrypt    (MKey_Integer, char *, int, char *, int *);
-static MKey_Error op_add_key    (MKey_Integer, char *, int, char *, int *);
-static MKey_Error op_remove_key (MKey_Integer, char *, int, char *, int *);
-static MKey_Error op_verify_key (MKey_Integer, char *, int, char *, int *);
-static MKey_Error op_list_keys  (MKey_Integer, char *, int, char *, int *);
-static MKey_Error op_list_tag   (MKey_Integer, char *, int, char *, int *);
-static MKey_Error op_shutdown   (MKey_Integer, char *, int, char *, int *);
+typedef MKey_Error (*opfunc)          (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_encrypt          (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_decrypt          (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_add_key          (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_remove_key       (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_list_keys        (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_list_tag         (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_shutdown         (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_verify_key       (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_generate_key     (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_get_metakey_info (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_unseal_keys      (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_set_metakey      (MKey_Integer, char *, int, char *, int *);
 
 static opfunc operations[] = {
-  op_encrypt,    /* MKEY_OP_ENCRYPT    */
-  op_decrypt,    /* MKEY_OP_DECRYPT    */
-  op_add_key,    /* MKEY_OP_ADD_KEY    */
-  op_remove_key, /* MKEY_OP_REMOVE_KEY */
-  op_list_keys,  /* MKEY_OP_LIST_KEYS  */
-  op_list_tag,   /* MKEY_OP_LIST_TAG   */
-  op_shutdown,   /* MKEY_OP_SHUTDOWN   */
-  op_verify_key, /* MKEY_OP_VERIFY_KEY */
+  op_encrypt,          /* MKEY_OP_ENCRYPT           */
+  op_decrypt,          /* MKEY_OP_DECRYPT           */
+  op_add_key,          /* MKEY_OP_ADD_KEY           */
+  op_remove_key,       /* MKEY_OP_REMOVE_KEY        */
+  op_list_keys,        /* MKEY_OP_LIST_KEYS         */
+  op_list_tag,         /* MKEY_OP_LIST_TAG          */
+  op_shutdown,         /* MKEY_OP_SHUTDOWN          */
+  op_verify_key,       /* MKEY_OP_VERIFY_KEY        */
+  op_generate_key,     /* MKEY_OP_GENERATE_KEY      */
+  op_get_metakey_info, /* MKEY_OP_GET_METAKEY_INFO  */
+  op_unseal_keys,      /* MKEY_OP_UNSEAL_KEYS       */
+  op_set_metakey,      /* MKEY_OP_SET_METAKEY       */
 };
 #define n_operations (sizeof(operations) / sizeof(operations[0]))
 
 struct keyinfo {
   struct keyinfo *next;
   int kvno;
+  int sealed;
   pthread_mutex_t mutex;
 
   krb5_enctype enctype;
@@ -88,6 +97,11 @@ struct taginfo {
   char *name;
   int slot;
   pthread_rwlock_t lock;
+
+  int meta_state;
+  int meta_kvno;
+  krb5_enctype meta_enctype;
+  krb5_keyblock meta_key;
 };
 
 static char *sock_name = MKEY_SOCKET;
@@ -276,6 +290,11 @@ static MKey_Error encrypt_decrypt(MKey_Integer cookie, int dir,
     return MKEY_ERR_NO_KEY;
   }
 
+  if (key->sealed) {
+    pthread_mutex_unlock(&key->mutex);
+    return MKEY_ERR_SEALED;
+  }
+
   if (!key->crypto) {
     err = krb5_crypto_init(ctx, &key->key, key->enctype, &key->crypto);
     if (err) {
@@ -334,6 +353,7 @@ static MKey_Error op_add_key(MKey_Integer cookie, char *reqbuf, int reqlen,
   struct keyinfo *key;
   krb5_context ctx;
   krb5_keytype keytype;
+  krb5_keyblock keyblock;
 
   err = _mkey_decode(reqbuf, reqlen, 2, intargs, 0, 0, &keydata, &tagname);
   if (err) return err;
@@ -347,8 +367,17 @@ static MKey_Error op_add_key(MKey_Integer cookie, char *reqbuf, int reqlen,
   err = context_setup(&ctx);
   if (err) return err;
 
+  memset(&keyblock, 0, sizeof(keyblock));
+
   err = krb5_enctype_to_keytype(ctx, intargs[1], &keytype);
   if (err) return err;
+
+  keyblock.keytype = keytype;
+  keyblock.keyvalue.length = keydata.size;
+  keyblock.keyvalue.data = malloc(keydata.size);
+  if (!keyblock.keyvalue.data)
+    return MKEY_ERR_NO_MEM;
+  memcpy(keyblock.keyvalue.data, keydata.data, keydata.size);
 
   /* begin critical section */
   err = pthread_mutex_lock(&key->mutex);
@@ -356,19 +385,12 @@ static MKey_Error op_add_key(MKey_Integer cookie, char *reqbuf, int reqlen,
 
   if (key->enctype) {
     pthread_mutex_unlock(&key->mutex);
+    free(keyblock.keyvalue.data);
     return MKEY_ERR_EXIST;
   }
 
-  key->key.keyvalue.data = malloc(keydata.size);
-  if (!key->key.keyvalue.data) {
-    pthread_mutex_unlock(&key->mutex);
-    return MKEY_ERR_NO_MEM;
-  }
-
   key->enctype = intargs[1];
-  key->key.keytype = keytype;
-  key->key.keyvalue.length = keydata.size;
-  memcpy(key->key.keyvalue.data, keydata.data, keydata.size);
+  memcpy(&key->key, &keyblock, sizeof(keyblock));
 
   err = pthread_mutex_unlock(&key->mutex);
   if (err) return err;
@@ -480,12 +502,15 @@ static MKey_Error op_list_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
   err = find_tag(tagname, &tag, 0);
   if (err) return err;
 
+  /* begin critical section on tag */
   err = pthread_rwlock_rdlock(&tag->lock);
   if (err) return err;
 
   i = 1;
   count = 0;
   for (key = tag->keys; key; key = key->next) {
+
+    /* begin critical section on key */
     err = pthread_mutex_lock(&key->mutex);
     if (err) {
       pthread_rwlock_unlock(&tag->lock);
@@ -498,6 +523,8 @@ static MKey_Error op_list_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
       pthread_rwlock_unlock(&tag->lock);
       return err;
     }
+    /* end critical section on key */
+
     if (!enctype) continue;
 
     if (count >= MAX_LIST_KEYS) {
@@ -512,6 +539,7 @@ static MKey_Error op_list_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
 
   err = pthread_rwlock_unlock(&tag->lock);
   if (err) return err;
+  /* end critical section on tag */
 
   return _mkey_encode(repbuf, replen, cookie, 0, i, iresult, 0, 0);
 }
@@ -543,6 +571,235 @@ static MKey_Error op_shutdown(MKey_Integer cookie, char *reqbuf, int reqlen,
   err = pthread_cond_signal(&exit_cv);
   if (err) return err;
 
+  return _mkey_encode(repbuf, replen, cookie, 0, 0, 0, 0, 0);
+}
+
+
+static MKey_Error op_generate_key(MKey_Integer cookie, char *reqbuf, int reqlen,
+                                  char *repbuf, int *replen)
+{
+  MKey_DataBlock keydata;
+  MKey_Integer enctype;
+  MKey_Error err;
+  krb5_keyblock key;
+  krb5_context ctx;
+
+  err = _mkey_decode(reqbuf, reqlen, 1, &enctype, 0, 0, 0, 0);
+  if (err) return err;
+
+  err = context_setup(&ctx);
+  if (err) return err;
+
+  err = krb5_generate_random_keyblock(ctx, enctype, &key);
+  if (err) return err;
+
+  keydata.data = key.keyvalue.data;
+  keydata.size = key.keyvalue.length;
+  err = _mkey_encode(repbuf, replen, cookie, 0, 0, 0, &keydata, 0);
+  krb5_free_keyblock_contents(ctx, &key);
+  return err;
+}
+
+
+static MKey_Error op_get_metakey_info(MKey_Integer cookie,
+                                      char *reqbuf, int reqlen,
+                                      char *repbuf, int *replen)
+{
+  MKey_Integer iresult[3];
+  MKey_Error err;
+  char *tagname;
+  struct taginfo *tag;
+  int i, count;
+
+  err = _mkey_decode(reqbuf, reqlen, 0, 0, 0, 0, 0, &tagname);
+  if (err) return err;
+
+  err = find_tag(tagname, &tag, 0);
+  if (err) return err;
+
+  /* begin critical section */
+  err = pthread_rwlock_rdlock(&tag->lock);
+  if (err) return err;
+
+  iresult[0] = tag->meta_state;
+  iresult[1] = tag->meta_kvno;
+  iresult[2] = tag->meta_enctype;
+
+  err = pthread_rwlock_unlock(&tag->lock);
+  if (err) return err;
+  /* end critical section */
+
+  return _mkey_encode(repbuf, replen, cookie, 0, 3, iresult, 0, 0);
+}
+
+
+static MKey_Error op_unseal_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
+                                 char *repbuf, int *replen)
+{
+  MKey_Integer enctype;
+  MKey_Error err, cerr;
+  MKey_DataBlock keydata;
+  char *tagname;
+  struct taginfo *tag;
+  struct keyinfo *key;
+  krb5_context ctx;
+  krb5_keyblock keyblock;
+  krb5_keytype keytype;
+  krb5_crypto crypto;
+  krb5_data res;
+  size_t keysize;
+
+  err = _mkey_decode(reqbuf, reqlen, 1, &enctype, 0, 0, &keydata, &tagname);
+  if (err) return err;
+
+  err = find_tag(tagname, &tag, 0);
+  if (err) return err;
+
+  err = context_setup(&ctx);
+  if (err) return err;
+
+  memset(&keyblock, 0, sizeof(keyblock));
+
+  err = krb5_enctype_to_keytype(ctx, enctype, &keytype);
+  if (err) return err;
+
+  keyblock.keytype = keytype;
+  keyblock.keyvalue.length = keydata.size;
+  keyblock.keyvalue.data = malloc(keydata.size);
+  if (!keyblock.keyvalue.data)
+    return MKEY_ERR_NO_MEM;
+  memcpy(keyblock.keyvalue.data, keydata.data, keydata.size);
+
+  err = krb5_crypto_init(ctx, &keyblock, enctype, &crypto);
+  if (err) {
+    free(keyblock.keyvalue.data);
+    return err;
+  }
+
+  /* begin critical section */
+  err = pthread_rwlock_wrlock(&tag->lock);
+  if (err) {
+    krb5_crypto_destroy(ctx, crypto);
+    free(keyblock.keyvalue.data);
+  }
+
+  if (tag->meta_state < 2) {
+    pthread_rwlock_unlock(&tag->lock);
+    krb5_crypto_destroy(ctx, crypto);
+    free(keyblock.keyvalue.data);
+    return MKEY_ERR_NOT_SEALED;
+  }
+
+  if (enctype != tag->meta_enctype) {
+    pthread_rwlock_unlock(&tag->lock);
+    krb5_crypto_destroy(ctx, crypto);
+    free(keyblock.keyvalue.data);
+    return MKEY_ERR_WRONG_KEY;
+  }
+
+  /* XXX verify the challenge */
+
+  /* Now, iterate over all the keys and decrypt them */
+  for (key = tag->keys; key; key = key->next) {
+    if (!key->sealed) continue;
+
+    err = krb5_decrypt(ctx, crypto, MKEY_KU_META,
+                       key->key.keyvalue.data, key->key.keyvalue.length, &res);
+    if (err) {
+      pthread_rwlock_unlock(&tag->lock);
+      krb5_crypto_destroy(ctx, crypto);
+      free(keyblock.keyvalue.data);
+      return err;
+    }
+    err = krb5_enctype_keysize(ctx, key->key.keytype, &keysize);
+    if (!err && keysize > res.length) err = KRB5_BAD_KEYSIZE;
+    if (err) {
+      pthread_rwlock_unlock(&tag->lock);
+      krb5_crypto_destroy(ctx, crypto);
+      free(keyblock.keyvalue.data);
+      free(res.data);
+      return err;
+    }
+
+    memset(key->key.keyvalue.data, 0, key->key.keyvalue.length);
+    free(key->key.keyvalue.data);
+    key->key.keyvalue = res;
+    key->key.keyvalue.length = keysize;
+    key->sealed = 0;
+  }
+
+  tag->meta_state = 1;
+  tag->meta_key = keyblock;
+
+  err = pthread_rwlock_unlock(&tag->lock);
+  /* end critical section */
+
+  krb5_crypto_destroy(ctx, crypto);
+  if (err) return err;
+
+  syslog(LOG_INFO, "unseal %s keys", tagname);
+  return _mkey_encode(repbuf, replen, cookie, 0, 0, 0, 0, 0);
+}
+
+
+static MKey_Error op_set_metakey(MKey_Integer cookie, char *reqbuf, int reqlen,
+                                 char *repbuf, int *replen)
+{
+  MKey_Integer intargs[2];
+  MKey_Error err;
+  MKey_DataBlock keydata;
+  char *tagname;
+  struct taginfo *tag;
+  krb5_context ctx;
+  krb5_keytype keytype;
+  krb5_keyblock keyblock;
+
+  err = _mkey_decode(reqbuf, reqlen, 2, intargs, 0, 0, &keydata, &tagname);
+  if (err) return err;
+
+  err = find_tag(tagname, &tag, 1);
+  if (err) return err;
+
+  err = context_setup(&ctx);
+  if (err) return err;
+
+  memset(&keyblock, 0, sizeof(keyblock));
+
+  err = krb5_enctype_to_keytype(ctx, intargs[1], &keytype);
+  if (err) return err;
+
+  keyblock.keytype = keytype;
+  keyblock.keyvalue.length = keydata.size;
+  keyblock.keyvalue.data = malloc(keydata.size);
+  if (!keyblock.keyvalue.data)
+    return MKEY_ERR_NO_MEM;
+  memcpy(keyblock.keyvalue.data, keydata.data, keydata.size);
+
+  /* begin critical section */
+  err = pthread_rwlock_wrlock(&tag->lock);
+  if (err) {
+    free(keyblock.keyvalue.data);
+    return err;
+  }
+
+  if (tag->meta_state > 1) {
+    pthread_rwlock_unlock(&tag->lock);
+    free(keyblock.keyvalue.data);
+    return MKEY_ERR_SEALED;
+  }
+
+  if (tag->meta_state) free(tag->meta_key.keyvalue.data);
+
+  tag->meta_kvno = intargs[0];
+  tag->meta_enctype = intargs[1];
+  tag->meta_key = keyblock;
+
+  err = pthread_rwlock_unlock(&tag->lock);
+  if (err) 
+    return err;
+  /* end critical section */
+
+  syslog(LOG_INFO, "set %s metakey kvno %d", tagname, intargs[0]);
   return _mkey_encode(repbuf, replen, cookie, 0, 0, 0, 0, 0);
 }
 

@@ -27,14 +27,20 @@
  */
 
 /* protocol opcodes */
-#define MKEY_OP_ENCRYPT     0
-#define MKEY_OP_DECRYPT     1
-#define MKEY_OP_ADD_KEY     2
-#define MKEY_OP_REMOVE_KEY  3
-#define MKEY_OP_LIST_KEYS   4
-#define MKEY_OP_LIST_TAG    5
-#define MKEY_OP_SHUTDOWN    6
-#define MKEY_OP_VERIFY_KEY  7
+#define MKEY_OP_ENCRYPT             0
+#define MKEY_OP_DECRYPT             1
+#define MKEY_OP_ADD_KEY             2
+#define MKEY_OP_REMOVE_KEY          3
+#define MKEY_OP_LIST_KEYS           4
+#define MKEY_OP_LIST_TAG            5
+#define MKEY_OP_SHUTDOWN            6
+#define MKEY_OP_VERIFY_KEY          7
+#define MKEY_OP_GENERATE_KEY        8
+#define MKEY_OP_GET_METAKEY_INFO    9
+#define MKEY_OP_UNSEAL_KEYS        10
+#define MKEY_OP_SET_METAKEY        11
+
+#define MKEY_KU_META 0x4D4B6579
 
 #ifdef USE_DOORS
 #define MKEY_SOCKET         "/var/run/mkey_door"  /* socket filename */
