@@ -15,7 +15,7 @@ read fullname
 
 echo ""
 echo "Initializing card..."
-pkcs15-init -TEC -l "$username" --no-so-pin -c /usr/tmp/flex.profile
+pkcs15-init -TEC -l "$username" --no-so-pin
 
 echo ""
 echo "Establishing PIN..."
