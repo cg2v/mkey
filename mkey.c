@@ -47,12 +47,12 @@ krb5_context krb5ctx;
 static SL_cmd commands[];
 
 
-static void print_key(char *data, int len)
+static void print_key(unsigned char *data, int len)
 {
   int i;
 
   for (i = 0; i < len; i++)
-    printf("%s%02x", i ? i%16 ? "\n  " : ":" : "  ", data[i]);
+    printf("%s%02x", i ? i%16 ? ":" : "\n  " : "  ", data[i]);
   printf("\n");
 }
 
@@ -62,7 +62,8 @@ static int get_key(char *etypestr, char *saltstr, char *keystr,
 {
   krb5_error_code err;
   krb5_salt salt;
-  char pwstring[1024], *data;
+  char pwstring[1024];
+  unsigned char *data;
   int i, j, d;
 
   err = krb5_string_to_enctype(krb5ctx, etypestr, enctype);
@@ -94,6 +95,7 @@ static int get_key(char *etypestr, char *saltstr, char *keystr,
       }
 
       i++;
+      d <<= 4;
       if      (keystr[i] >= '0' && keystr[i] <= '9') d += keystr[i] - '0';
       else if (keystr[i] >= 'a' && keystr[i] <= 'f') d += keystr[i] - 'a' + 10;
       else if (keystr[i] >= 'A' && keystr[i] <= 'F') d += keystr[i] - 'A' + 10;
@@ -400,6 +402,7 @@ static int do_str2k(int argc, char **argv)
   krb5_keyblock key;
   char *etypestr = 0, *saltstr = 0, *keystr = 0;
 
+  argv++; argc--;
   if      (argc > 1 && !strcmp(argv[0], "-k")) {
     keystr  = argv[1];
     argv += 2; argc -= 2;
@@ -449,7 +452,7 @@ static int do_genkey(int argc, char **argv)
     return 0;
   }
 
-  print_key(key.data, key.size);
+  print_key((unsigned char *)key.data, key.size);
   return 0;
 }
 
@@ -466,7 +469,7 @@ static int do_getmeta(int argc, char **argv)
     return 0;
   }
 
-  err = mkey_get_metakey_info(argv[1], &kvno, &enctype, &state);
+  err = mkey_get_metakey_info(argv[1], &state, &kvno, &enctype);
   if (err) {
     fprintf(stderr, "%s: %s\n", argv[1], error_message(err));
     return 0;
@@ -498,7 +501,7 @@ static int do_unseal(int argc, char **argv)
 
 static int do_setmeta(int argc, char **argv)
 {
-  return key_entry_cmd(argc, argv, 0, "meta key set");
+  return key_entry_cmd(argc, argv, 1, "meta key set");
 }
 
 

@@ -794,6 +794,7 @@ static MKey_Error op_set_metakey(MKey_Integer cookie, char *reqbuf, int reqlen,
 
   if (tag->meta_state) free(tag->meta_key.keyvalue.data);
 
+  tag->meta_state = 1;
   tag->meta_kvno = intargs[0];
   tag->meta_enctype = intargs[1];
   tag->meta_key = keyblock;
