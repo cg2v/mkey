@@ -1,0 +1,135 @@
+
+The MKEY protocol is a simple request-response datagram protocol.  It
+contains no authentication or other security measures, and is intended
+to be run _only_ over a access-controlled local channel such as a door
+or a UNIX domain socket.  Because communication is always between entities
+on the same machine, native byte order is used.
+
+Three data types are used in this protocol:
+
+- An Integer is a 32-bit number in native byte order
+- A DataBlock consists of an Integer count, followed by the
+  specified number of bytes of data.
+- A String consists of an arbitrary number of printable characters,
+  and extends to the end of the packet.  Non-printing characters are
+  not permitted, and a terminating NUL is not required.
+
+
+Each transaction consists of the client sending a single request packet,
+followed by the server sending a single response packet.  There is always
+exactly one response for each request.  All transactions stand alone.
+
+
+All request packets are of the following form:
+   Integer   cookie
+   Integer   request
+   ANY       in_params
+
+The cookie is chosen arbitrarily by the client, and must be unique.  It
+is used to associate requests with responses.  The format of the in_params
+is dependent on the request code used.
+
+
+All response packets are of the following form:
+   Integer   cookie
+   Integer   error
+   ANY       out_params
+
+
+The cookie must be the same as the cookie in the corresponding request;
+it is used to associate requests with responses.  If the request was
+successful, the error code is zero, and the format of the out_params is
+dependent on the request code used.  If the request was not successful,
+then the error code is non-zero, and no out_params are present.
+
+
+
+in the corresponding request.  On success, the error code is zero, and
+the format of output parameters is controlled by the request code.  On
+failure, the error code is nonzero, and there are no output parameters.
+
+
+The following requests are supported:
+
+   0  ENCRYPT
+   1  DECRYPT
+   2  ADD_KEY
+   3  REMOVE_KEY
+   4  LIST_KEYS
+   5  LIST_TAG
+   6  SHUTDOWN
+
+
+ENCRYPT (0)
+   Integer   kvno
+   DataBlock plaintext
+   String    tag
+   ========
+   DataBlock ciphertext
+
+   Looks up the key associated with the specified tag and kvno, and
+   encrypts the provided ciphertext.  Returns an error if the key
+   cannot be found.
+
+
+DECRYPT (1)
+   Integer   kvno
+   DataBlock ciphertext
+   String    tag
+   ========
+   DataBlock plaintext
+
+   Looks up the key associated with the specified tag and kvno, and
+   decrypts the provided plaintext.  Returns an error if the key
+   cannot be found.
+
+
+ADD_KEY (2)
+   Integer   kvno
+   Integer   enctype
+   DataBlock keydata
+   String    tag
+   ========
+   -
+
+   Adds a new key to the server, associated with the specified tag and
+   kvno.  Returns an error if such a key already exists.
+
+
+REMOVE_KEY (3)
+   Integer   kvno
+   String    tag
+   ========
+   -
+
+   Removes the key associated with the specified tag and kvno.  Returns
+   an error if the specified key does not exist.
+
+
+LIST_KEYS (4)
+   String    tag
+   ========
+   Integer   count
+   Integer   kvno, enctype (* repeats count times)
+
+   Looks up keys for the specified tag, and returns a list containing
+   the kvno and enctype of each key.  The actual key values cannot be
+   retrieved.
+
+
+LIST_TAG (5)
+   Integer   i
+   ========
+   String    tag
+
+   Returns the ith unique tag in the key database.  Returns an error
+   if there is no ith tag, or if i is larger than the largest tag index.
+   This call may be used to enumerate all tags in the key database.
+
+
+SHUTDOWN (6)
+   -
+   ========
+   -
+
+   Shuts down the server.

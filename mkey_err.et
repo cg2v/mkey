@@ -1,0 +1,45 @@
+# mkey - Kerberos master key manager
+# Copyright (c) 2003 Carnegie Mellon University
+# All Rights Reserved.
+# 
+# Permission to use, copy, modify and distribute this software and its
+# documentation is hereby granted, provided that both the copyright
+# notice and this permission notice appear in all copies of the
+# software, derivative works or modified versions, and any portions
+# thereof, and that both notices appear in supporting documentation.
+#
+# CARNEGIE MELLON ALLOWS FREE USE OF THIS SOFTWARE IN ITS "AS IS"
+# CONDITION.  CARNEGIE MELLON DISCLAIMS ANY LIABILITY OF ANY KIND FOR
+# ANY DAMAGES WHATSOEVER RESULTING FROM THE USE OF THIS SOFTWARE.
+#
+# Carnegie Mellon requests users of this software to return to
+#
+#  Software Distribution Coordinator  or  Software_Distribution@CS.CMU.EDU
+#  School of Computer Science
+#  Carnegie Mellon University
+#  Pittsburgh PA 15213-3890
+#
+# any improvements or extensions that they make and grant Carnegie Mellon
+# the rights to redistribute these changes.
+# 
+# $Id$
+# mkey protocol errors
+
+id "$Id"
+
+error_table mkey
+
+prefix MKEY_ERR
+
+error_code UNKNOWN_REQ,          "unknown mkey request"
+error_code REQ_FORMAT,           "mkey request format error"
+error_code REP_FORMAT,           "mkey reply format error"
+error_code NO_KEY,               "master key not found"
+error_code EXIST,                "master key already exists"
+error_code NO_TAG,               "no such master key tag"
+error_code TAG_RANGE,            "master key tagid out of range"
+error_code TOO_BIG,              "mkey message exceeds max size"
+error_code OVERFLOW,             "mkey reply data exceeds buffer size"
+error_code TIMEOUT,              "mkey server not responding"
+error_code REP_COOKIE,           "mkey reply cookie does not match"
+end
