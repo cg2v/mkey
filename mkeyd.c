@@ -244,8 +244,8 @@ static int32_t encrypt_decrypt(char *reqbuf, int reqlen, char *repbuf, int *repl
   tagname = reqbuf + MKEY_HDRSIZE + 8 + textsize;
   reqbuf[reqlen - 1] = 0;
 
-  syslog(LOG_DEBUG, "%s(%s[%d], %d bytes)", dir ? "encrypt" : "decrypt",
-         tagname, kvno, textsize);
+  /* syslog(LOG_DEBUG, "%s(%s[%d], %d bytes)", dir ? "encrypt" : "decrypt",
+         tagname, kvno, textsize); */
 
   err = find_tag(tagname, &tag, 0);
   if (err) return err;
