@@ -446,8 +446,8 @@ static int prkey_setup(p15_simple_t ctx) {
      return FAIL;
 }
 
-int p15_simple_decrypt(p15_simple_t ctx, char *inbuf, int inlen,
-                       char *outbuf, int *outlen) {
+int p15_simple_decrypt(p15_simple_t ctx, unsigned char *inbuf, int inlen,
+                       unsigned char *outbuf, int *outlen) {
      int status;
      if (!ctx->can_decrypt)
           return FAIL;
@@ -478,8 +478,8 @@ int p15_simple_decrypt(p15_simple_t ctx, char *inbuf, int inlen,
 
 
 
-static int do_sign(p15_simple_t ctx, char *inbuf, int inlen,
-                       char *outbuf, int *outlen, int flags) {
+static int do_sign(p15_simple_t ctx, unsigned char *inbuf, int inlen,
+                       unsigned char *outbuf, int *outlen, int flags) {
      int status;
      if (!ctx->can_sign)
           return FAIL;
@@ -508,8 +508,8 @@ static int do_sign(p15_simple_t ctx, char *inbuf, int inlen,
      return FAIL;
 }
 
-int p15_simple_sign_raw(p15_simple_t ctx, char *inbuf, int inlen,
-                       char *outbuf, int *outlen) {
+int p15_simple_sign_raw(p15_simple_t ctx, unsigned char *inbuf, int inlen,
+                       unsigned char *outbuf, int *outlen) {
      if (!ctx->can_sign)
           return FAIL;
 
@@ -518,8 +518,8 @@ int p15_simple_sign_raw(p15_simple_t ctx, char *inbuf, int inlen,
 }
 
 
-int p15_simple_sign_md5(p15_simple_t ctx, char *inbuf, int inlen,
-                       char *outbuf, int *outlen) {
+int p15_simple_sign_md5(p15_simple_t ctx, unsigned char *inbuf, int inlen,
+                       unsigned char *outbuf, int *outlen) {
      if (inlen != 16) {
           fprintf(stderr, "Input buffer is wrong size\n");
           return FAIL;
@@ -527,8 +527,8 @@ int p15_simple_sign_md5(p15_simple_t ctx, char *inbuf, int inlen,
      return do_sign(ctx, inbuf, inlen, outbuf, outlen,
                     SC_ALGORITHM_RSA_PAD_PKCS1|SC_ALGORITHM_RSA_HASH_MD5);
 }
-int p15_simple_sign_sha(p15_simple_t ctx, char *inbuf, int inlen,
-                       char *outbuf, int *outlen) {
+int p15_simple_sign_sha(p15_simple_t ctx, unsigned char *inbuf, int inlen,
+                       unsigned char *outbuf, int *outlen) {
      if (inlen != 20) {
           fprintf(stderr, "Input buffer is wrong size\n");
           return FAIL;
@@ -537,8 +537,8 @@ int p15_simple_sign_sha(p15_simple_t ctx, char *inbuf, int inlen,
                     SC_ALGORITHM_RSA_PAD_PKCS1|SC_ALGORITHM_RSA_HASH_SHA1);
 }
 
-int p15_simple_sign_tls(p15_simple_t ctx, char *inbuf, int inlen,
-                       char *outbuf, int *outlen) {
+int p15_simple_sign_tls(p15_simple_t ctx, unsigned char *inbuf, int inlen,
+                       unsigned char *outbuf, int *outlen) {
      if (inlen != 36) {
           fprintf(stderr, "Input buffer is wrong size\n");
           return FAIL;

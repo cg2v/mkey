@@ -43,17 +43,17 @@ int p15_simple_can_sign(p15_simple_t ctx);
 /*int p15_simple_encrypt(p15_simple_t ctx, char *inbuf, int inlen,
   char *outbuf, int outlen);*/
 
-int p15_simple_decrypt(p15_simple_t ctx, char *inbuf, int inlen,
-                       char *outbuf, int *outlen);
+int p15_simple_decrypt(p15_simple_t ctx, unsigned char *inbuf, int inlen,
+                       unsigned char *outbuf, int *outlen);
 
-int p15_simple_sign_raw(p15_simple_t ctx, char *inbuf, int inlen,
-                       char *outbuf, int *outlen);
-int p15_simple_sign_md5(p15_simple_t ctx, char *inbuf, int inlen,
-                       char *outbuf, int *outlen);
-int p15_simple_sign_sha(p15_simple_t ctx, char *inbuf, int inlen,
-                       char *outbuf, int *outlen);
-int p15_simple_sign_tls(p15_simple_t ctx, char *inbuf, int inlen,
-                       char *outbuf, int *outlen);
+int p15_simple_sign_raw(p15_simple_t ctx, unsigned char *inbuf, int inlen,
+                       unsigned char *outbuf, int *outlen);
+int p15_simple_sign_md5(p15_simple_t ctx, unsigned char *inbuf, int inlen,
+                       unsigned char *outbuf, int *outlen);
+int p15_simple_sign_sha(p15_simple_t ctx, unsigned char *inbuf, int inlen,
+                       unsigned char *outbuf, int *outlen);
+int p15_simple_sign_tls(p15_simple_t ctx, unsigned char *inbuf, int inlen,
+                       unsigned char *outbuf, int *outlen);
 
 #define OK 0
 #define FAIL 1

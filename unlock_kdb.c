@@ -30,7 +30,7 @@ int main(int argc, char **argv)
   p15_simple_t ctx;
   struct stat sbuf;
   char *tag, namebuf[256], *filename;
-  char *ciphertext, *plaintext;
+  unsigned char *ciphertext, *plaintext;
   int size;;
   FILE *F;
   RSA *rsa;

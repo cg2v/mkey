@@ -28,6 +28,6 @@ update_meta: update_meta.o
 	${CC} ${LDFLAGS} -o $@ $^ -lcrypto -lmkey -lcom_err -lsocket
 
 unlock_kdb: unlock_kdb.o pkcs15-simple.o
-	${CC} ${LDFLAGS} -o $@ $^ -lcrypto -lmkey -lcom_err -lsocket
+	${CC} ${LDFLAGS} -o $@ $^ -lopensc -lcrypto -lmkey -lcom_err -lsocket
 
 unlock_kdb.o pkcs15-simple.o : pkcs15-simple.c
