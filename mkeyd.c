@@ -1443,6 +1443,7 @@ static void mainloop(void)
 
 int main(int argc, char **argv)
 {
+  struct rlimit rl;
   char *argv0;
   int err;
 
@@ -1456,7 +1457,14 @@ int main(int argc, char **argv)
   syslog(LOG_INFO, "mkeyd %s", "$Revision$");
   err = mlockall(MCL_CURRENT | MCL_FUTURE);
   if (err) {
-    syslog(LOG_ERR, "mlockall: %s", strerror(err));
+    syslog(LOG_ERR, "mlockall: %s", strerror(errno));
+    exit(1);
+  }
+  memset(&rl, 0, sizeof(rl));
+  err = setrlimit(RLIMIT_CORE, &rl);
+  if (err) {
+    syslog(LOG_ERR, "setrlimit: %s", strerror(errno));
+    exit(1);
   }
   err = pthread_rwlock_init(&masterlock, 0);
   if (err) {

@@ -27,6 +27,7 @@
  */
 
 
+#include <sys/mman.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -684,6 +685,7 @@ void usage() {
 
 int main(int argc, char **argv)
 {
+  struct rlimit rl;
   krb5_error_code kerr;
 
   initialize_krb5_error_table();
@@ -700,6 +702,15 @@ int main(int argc, char **argv)
     } else if (argv[1][0] == '-') {
       usage();
     }
+  }
+  if (mlockall(MCL_CURRENT | MCL_FUTURE)) {
+    fprintf(stderr, "mlockall: %s\n", strerror(errno));
+    exit(1);
+  }
+  memset(&rl, 0, sizeof(rl));
+  if (setrlimit(RLIMIT_CORE, &rl)) {
+    fprintf(stderr, "setrlimit: %s\n", strerror(errno));
+    exit(1);
   }
   kerr = krb5_init_context(&krb5ctx);
   if (kerr) {
