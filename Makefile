@@ -28,7 +28,7 @@ SYS=$(shell cat /etc/mw/sysname)
 DESTDIR=/dist/sw.mkey.${SYS}
 CMNDEST=/dist/sw.mkey.common
 
-CFLAGS = -I/usr/local/include -DUSE_DOORS
+CFLAGS = -I/usr/local/include -DUSE_DOORS ${DEBUG}
 LDFLAGS = -L/usr/local/lib -R /usr/local/lib
 
 V=0
@@ -74,12 +74,12 @@ mkey_err.c mkey_err.h: mkey_err.et
 	compile_et $<
 
 mkey: mkey.o libmkey.so.$V
-	${CC} ${LDFLAGS} -o $@ $^ -lkrb5 -ldes -lsl -lcom_err
+	${CC} ${LDFLAGS} ${DEBUG} -o $@ $^ -lkrb5 -ldes -lsl -lcom_err
 
 mkey.o : mkey.c libmkey.h mkey_err.h
 
 mkeyd: mkeyd.o libmkey.so.$V
-	${CC} -mt ${LDFLAGS} -o $@ $^ -ldoor -lpthread -lkrb5
+	${CC} -mt ${LDFLAGS} ${DEBUG} -o $@ $^ -ldoor -lpthread -lkrb5
 
 mkeyd.o: mkeyd.c mkey.h libmkey.h mkey_err.h
 	${CC} -mt ${CFLAGS} -c -o $@ $<

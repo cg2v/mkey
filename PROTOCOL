@@ -222,3 +222,12 @@ STORE_KEYS (14)
 
    Store keys for the specified tag to a file.  Keys are encrypted in the
    current meta key for the specified tag, which must be set.
+
+
+LOAD_KEYS (15)
+   String    tag
+   ========
+   -
+
+   Load keys and meta key parameters for the specified tag from a file.
+   This operation is not permitted if there are sealed keys.

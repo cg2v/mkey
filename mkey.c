@@ -485,7 +485,7 @@ static int do_getmeta(int argc, char **argv)
   switch (state) {
     case 0: statestr  = "keys not sealed; meta key not set"; break;
     case 1: statestr  = "keys not sealed; meta key set";     break;
-    case 2: statestr  = "key sealed";                        break;
+    case 2: statestr  = "keys sealed";                       break;
     default: statestr = "state unknown";
   }
 
@@ -527,6 +527,25 @@ static int do_store(int argc, char **argv)
     fprintf(stderr, "%s: %s\n", argv[1], error_message(err));
   } else {
     printf("%s: keys stored\n", argv[1]);
+  }
+  return 0;
+}
+
+
+static int do_load(int argc, char **argv)
+{
+  MKey_Error err;
+
+  if (argc != 2) {
+    fprintf(stderr, "usage: load tag\n");
+    return 0;
+  }
+
+  err = mkey_load_keys(argv[1]);
+  if (err) {
+    fprintf(stderr, "%s: %s\n", argv[1], error_message(err));
+  } else {
+    printf("%s: keys loaded\n", argv[1]);
   }
   return 0;
 }
@@ -640,6 +659,10 @@ static SL_cmd commands[] = {
     "store",      do_store,      "store tag",
     "Store master keys for the specified tag to disk, encrypted using the\n"
     "current meta key."
+  },
+  {
+    "load",       do_load,       "load tag",
+    "Load master keys for the specified tag from disk."
   },
   {
     "shutdown",   do_shutdown,   "shutdown",

@@ -42,9 +42,15 @@
 #define MKEY_OP_STRING_TO_ETYPE    12
 #define MKEY_OP_ETYPE_TO_STRING    13
 #define MKEY_OP_STORE_KEYS         14
+#define MKEY_OP_LOAD_KEYS          15
 
 #define MKEY_KU_META 0x4D4B6579
 #define MKEY_KU_CHAL 0x4D4B4368
+
+#define MKEY_MSTATE_NEW             0  /* no sealed keys; mkey not set */
+#define MKEY_MSTATE_OPEN            1  /* no sealed keys; mkey set */
+#define MKEY_MSTATE_SEALED          2  /* sealed keys */
+#define MKEY_MSTATE_LOADING         3  /* loading data */
 
 #ifdef USE_DOORS
 #define MKEY_SOCKET         "/var/run/mkey_door"  /* socket filename */
