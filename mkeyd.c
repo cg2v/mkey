@@ -872,7 +872,7 @@ static MKey_Error op_set_metakey(MKey_Integer cookie, char *reqbuf, int reqlen,
   if (tag->challenge.length) {
     memset(tag->challenge.data, 0, tag->challenge.length);
     free(tag->challenge.data);
-    memset(&tag->challenge.data, 0, sizeof(tag->challenge.data));
+    memset(&tag->challenge, 0, sizeof(tag->challenge));
   }
 
   err = pthread_rwlock_unlock(&tag->lock);
