@@ -33,7 +33,7 @@ LDFLAGS = -L/usr/local/lib -R /usr/local/lib
 
 V=0
 
-PROGRAMS = mkeyd
+PROGRAMS = mkey mkeyd
 LIBRARIES = libmkey.so.$V
 
 all: ${PROGRAMS} ${LIBRARIES}
@@ -53,6 +53,10 @@ mkey_err.o: mkey_err.c mkey_err.h
 mkey_err.c mkey_err.h: mkey_err.et
 	compile_et $<
 
+mkey: mkey.o libmkey.so.$V
+	${CC} ${LDFLAGS} -o $@ $^ -lkrb5 -ldes -lsl -lcom_err
+
+mkey.o : mkey.c libmkey.h mkey_err.h
 
 mkeyd: mkeyd.o libmkey.so.$V
 	${CC} -mt ${LDFLAGS} -o $@ $^ -ldoor -lpthread -lkrb5
