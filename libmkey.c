@@ -303,6 +303,25 @@ MKey_Error mkey_list_keys(char *tag, MKey_Integer *nkeys, MKey_KeyInfo *keys)
 }
 
 
+MKey_Error mkey_find_largest_kvno(char *tag, MKey_Integer *kvno)
+{
+  MKey_Error err;
+  MKey_KeyInfo keys[512];
+  MKey_Integer nkeys, i;
+
+  nkeys = sizeof(keys) / sizeof(MKey_KeyInfo);
+  err = mkey_list_keys(tag, &nkeys, keys);
+  if (err) return err;
+  if (!nkeys) return MKEY_ERR_NO_KEY;
+
+  *kvno = keys[0].kvno;
+  for (i = 0; i < nkeys; i++)
+    if (*kvno < keys[0].kvno)
+      *kvno = keys[0].kvno;
+  return 0;
+}
+
+
 MKey_Error mkey_list_tag(MKey_Integer tagid, char *tag, int bufsize)
 {
   MKey_Error err;

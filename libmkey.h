@@ -50,6 +50,7 @@ extern MKey_Error mkey_add_key(char *tag, MKey_Integer kvno,
                                MKey_Integer enctype, MKey_DataBlock *key);
 extern MKey_Error mkey_remove_key(char *tag, MKey_Integer kvno);
 extern MKey_Error mkey_verify_key(char *tag, MKey_Integer kvno);
+extern MKey_Error mkey_find_largest_kvno(char *tag, MKey_Integer *kvno);
 extern MKey_Error mkey_list_keys(char *tag, MKey_Integer *nkeys, MKey_KeyInfo *keys);
 extern MKey_Error mkey_list_tag(MKey_Integer tagid, char *tag, int bufsize);
 extern MKey_Error mkey_shutdown(void);
