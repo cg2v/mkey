@@ -47,6 +47,14 @@
 #include "libmkey.h"
 #include "mkey.h"
 
+#ifdef MSG_NOSIGNAL
+#define SEND_FLAGS (MSG_DONTWAIT|MSG_NOSIGNAL)
+#define RECV_FLAGS (MSG_WAITALL|MSG_NOSIGNAL)
+#else
+#define SEND_FLAGS 0
+#define RECV_FLAGS 0
+#endif
+
 
 static char req_buf[MKEY_MAXSIZE + 1];
 static char rep_buf[MKEY_MAXSIZE + 1];
@@ -59,17 +67,17 @@ static void client_loop(int csock)
 
   for (;;) {
     pktsize = 1;
-    n = recv(csock, &pktsize, sizeof(pktsize), MSG_WAITALL|MSG_NOSIGNAL);
+    n = recv(csock, &pktsize, sizeof(pktsize), RECV_FLAGS);
     if (n < 0 && errno == EINTR) continue;
     if (n == sizeof(pktsize)) {
       pktsize = ntohl(pktsize);
       if (pktsize > MKEY_MAXSIZE) {
         code = htonl(MKEY_ERR_TOO_BIG);
-        send(csock, &code, sizeof(code), MSG_DONTWAIT|MSG_NOSIGNAL);
+        send(csock, &code, sizeof(code), SEND_FLAGS);
         return;
       }
       for (;;) {
-        n = recv(csock, req_buf, pktsize, MSG_WAITALL|MSG_NOSIGNAL);
+        n = recv(csock, req_buf, pktsize, RECV_FLAGS);
         if (n >= 0 || errno != EINTR) break;
       }
     } else if (n >= 0) n = errno = -1;
@@ -90,12 +98,12 @@ static void client_loop(int csock)
     }
     pktsize = htonl(replen);
     for (;;) {
-      n = send(csock, &pktsize, sizeof(pktsize), MSG_DONTWAIT|MSG_NOSIGNAL);
+      n = send(csock, &pktsize, sizeof(pktsize), SEND_FLAGS);
       if (n >= 0 || errno != EINTR) break;
     }
     if (n == sizeof(pktsize)) {
       for (;;) {
-        n = send(csock, repptr, replen, MSG_DONTWAIT|MSG_NOSIGNAL);
+        n = send(csock, repptr, replen, SEND_FLAGS);
         if (n >= 0 || errno != EINTR) break;
       }
     } else if (n >= 0) n = errno = -1;

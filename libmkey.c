@@ -46,6 +46,14 @@
 #include "mkey.h"
 
 
+#ifdef MSG_NOSIGNAL
+#define SEND_FLAGS (MSG_DONTWAIT|MSG_NOSIGNAL)
+#define RECV_FLAGS (MSG_WAITALL|MSG_NOSIGNAL)
+#else
+#define SEND_FLAGS 0
+#define RECV_FLAGS 0
+#endif
+
 static char *mkey_sock_name = 0;
 static char req_buf[MKEY_MAXSIZE + 1];
 static char rep_buf[MKEY_MAXSIZE + 1];
@@ -102,12 +110,11 @@ MKey_Error _mkey_do_request(MKey_Integer cookie, char *reqBUF, int reqlen,
 
       /* Send off our request */
       pktsize = htonl(reqlen);
-      n = send(mkeyd_sock, &pktsize, sizeof(pktsize),
-               MSG_DONTWAIT|MSG_NOSIGNAL);
+      n = send(mkeyd_sock, &pktsize, sizeof(pktsize), SEND_FLAGS);
       if (n < 0 && errno == EINTR) continue;
       if (n == sizeof(pktsize)) {
         for (;;) {
-          n = send(mkeyd_sock, reqBUF, reqlen, MSG_DONTWAIT|MSG_NOSIGNAL);
+          n = send(mkeyd_sock, reqBUF, reqlen, SEND_FLAGS);
           if (n >= 0 || errno != EINTR) break;
         }
       }
@@ -128,8 +135,7 @@ MKey_Error _mkey_do_request(MKey_Integer cookie, char *reqBUF, int reqlen,
 
       pktsize = 1;
       for (;;) {
-        n = recv(mkeyd_sock, &pktsize, sizeof(pktsize),
-                 MSG_WAITALL|MSG_NOSIGNAL);
+        n = recv(mkeyd_sock, &pktsize, sizeof(pktsize), RECV_FLAGS);
         if (n >= 0 || errno != EINTR) break;
       }
       if (n == sizeof(pktsize)) {
@@ -143,7 +149,7 @@ MKey_Error _mkey_do_request(MKey_Integer cookie, char *reqBUF, int reqlen,
           continue;
         }
         for (;;) {
-          n = recv(mkeyd_sock, repBUF, pktsize, MSG_WAITALL|MSG_NOSIGNAL);
+          n = recv(mkeyd_sock, repBUF, pktsize, RECV_FLAGS);
           if (n >= 0 || errno != EINTR) break;
         }
       } else if (n >= 0) n = errno = -1;

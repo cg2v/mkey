@@ -36,6 +36,7 @@ LDFLAGS = -L/usr/local/lib -R /usr/local/lib
 SHLDFLAGS = ${LDFLAGS} -G
 MTFLAGS = -mt
 RPCLIBS = -ldoor
+SOCKLIBS = -lsocket
 PICFLAGS=-KPIC
 endif
 
@@ -75,7 +76,7 @@ ${CMNDEST}/usr/local/include/% : % ; ${CPRULE}
 
 
 libmkey.so.$V: libmkey.o mkeycode.o mkey_err.o
-	${LD} ${SHLDFLAGS} -h $@ -o $@ $^ ${RPCLIBS} -lcom_err
+	${LD} ${SHLDFLAGS} -h $@ -o $@ $^ ${RPCLIBS} -lcom_err ${SOCKLIBS}
 
 libmkey.o: libmkey.c libmkey.h mkey_err.h mkey.h
 	${CC} ${CFLAGS} ${PICFLAGS} -c -o $@ $<
@@ -95,7 +96,7 @@ mkey: mkey.o libmkey.so.$V
 mkey.o : mkey.c libmkey.h mkey_err.h
 
 mkrelay: mkrelay.o libmkey.so.$V
-	${CC} ${LDFLAGS} ${DEBUG} -o $@ $^ -lcom_err
+	${CC} ${LDFLAGS} ${DEBUG} -o $@ $^ -lcom_err ${SOCKLIBS}
 
 mkrelay.o : mkrelay.c libmkey.h mkey_err.h
 
