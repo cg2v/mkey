@@ -47,7 +47,85 @@ krb5_context krb5ctx;
 static SL_cmd commands[];
 
 
-static int do_encrypt(int argc, char **argv)
+static void print_key(char *data, int len)
+{
+  int i;
+
+  for (i = 0; i < len; i++)
+    printf("%s%02x", i ? i%16 ? "\n  " : ":" : "  ", data[i]);
+  printf("\n");
+}
+
+
+static int get_key(char *etypestr, char *saltstr, char *keystr,
+                   krb5_enctype *enctype, krb5_keyblock *key)
+{
+  krb5_error_code err;
+  krb5_salt salt;
+  char pwstring[1024], *data;
+  int i, j, d;
+
+  err = krb5_string_to_enctype(krb5ctx, etypestr, enctype);
+  if (err) {
+    fprintf(stderr, "%s: %s\n", etypestr, error_message(err));
+    return 1;
+  }
+
+  if (keystr) {
+    memset(key, 0, sizeof(*key));
+    data = malloc(strlen(keystr));
+    if (!data) {
+      fprintf(stderr, "get_key: out of memory\n");
+      return 1;
+    }
+    for (i = j = 0; keystr[i]; i++) {
+      if      (keystr[i] == ':' || keystr[i] == ' ') continue;
+      else if (keystr[i] >= '0' && keystr[i] <= '9') d = keystr[i] - '0';
+      else if (keystr[i] >= 'a' && keystr[i] <= 'f') d = keystr[i] - 'a' + 10;
+      else if (keystr[i] >= 'A' && keystr[i] <= 'F') d = keystr[i] - 'A' + 10;
+      else {
+        fprintf(stderr, "%s: invalid key string\n", keystr);
+        free(data);
+        return 1;
+      }
+      if (keystr[i+1] == ':' || keystr[i+1] == ' ' || !keystr[i+1]) {
+        data[j++] = d;
+        continue;
+      }
+
+      i++;
+      if      (keystr[i] >= '0' && keystr[i] <= '9') d += keystr[i] - '0';
+      else if (keystr[i] >= 'a' && keystr[i] <= 'f') d += keystr[i] - 'a' + 10;
+      else if (keystr[i] >= 'A' && keystr[i] <= 'F') d += keystr[i] - 'A' + 10;
+      else {
+        fprintf(stderr, "%s: invalid key string\n", keystr);
+        free(data);
+        return 1;
+      }
+      data[j++] = d;
+    }
+    key->keyvalue.data = data;
+    key->keyvalue.length = j;
+  } else {
+    memset(&salt, 0, sizeof(salt));
+    salt.salttype = KRB5_PW_SALT;
+    salt.saltvalue.data = saltstr;
+    salt.saltvalue.length = saltstr ? strlen(saltstr) : 0;
+
+    if (des_read_pw_string(pwstring, sizeof(pwstring), "Password: ", 1))
+      return 1;
+    err = krb5_string_to_key_salt(krb5ctx, *enctype, pwstring, salt, key);
+    if (err) {
+      fprintf(stderr, "string_to_key: %s\n", error_message(err));
+      return 1;
+    }
+  }
+  return 0;
+}
+
+
+
+static int encrypt_decrypt(int argc, char **argv, int mode)
 {
   MKey_Error err;
   MKey_DataBlock in_text, out_text;
@@ -76,7 +154,10 @@ static int do_encrypt(int argc, char **argv)
   out_text.data = buf;
   out_text.size = sizeof(buf);
 
-  err = mkey_encrypt(argv[1], kvno, &in_text, &out_text);
+  if (mode)
+    err = mkey_encrypt(argv[1], kvno, &in_text, &out_text);
+  else
+    err = mkey_decrypt(argv[1], kvno, &in_text, &out_text);
   if (err) {
     fprintf(stderr, "%s %d: %s\n", argv[1], kvno, error_message(err));
   } else {
@@ -85,96 +166,85 @@ static int do_encrypt(int argc, char **argv)
   return 0;
 }
 
+static int do_encrypt(int argc, char **argv)
+{
+  return encrypt_decrypt(argc, argv, 1);
+}
 
 static int do_decrypt(int argc, char **argv)
 {
+  return encrypt_decrypt(argc, argv, 0);
+}
+
+
+
+static int key_entry_cmd(int argc, char **argv, int mode, char *okmsg)
+{
+  krb5_enctype enctype;
+  krb5_keyblock key;
   MKey_Error err;
-  MKey_DataBlock in_text, out_text;
+  MKey_DataBlock keydata;
+  char *tag = 0, *kvnostr = 0, *etypestr = 0, *saltstr = 0, *keystr = 0;
+  char *cmd, *x;
   long kvno;
-  char buf[1024], *x;
-  int n;
 
-  if (argc != 3 || !argv[1][0] || !argv[2][0]) {
-    fprintf(stderr, "usage: decrypt tag kvno\n");
-    return 0;
-  }
-  kvno = strtol(argv[2], &x, 10);
-  if (*x || kvno < 0 || kvno > 0x7fffffff) {
-    fprintf(stderr, "invalid kvno %s\n", argv[2]);
-    return 0;
+  cmd = argv[0]; argv++; argc--;
+  if      (argc > 1 && !strcmp(argv[0], "-k")) {
+    keystr  = argv[1];
+    argv += 2; argc -= 2;
+  } else if (argc > 1 && !strcmp(argv[0], "-s")) {
+    saltstr = argv[1];
+    argv += 2; argc -= 2;
   }
 
-  n = read(0, buf, sizeof(buf));
-  if (n < 0) {
-    fprintf(stderr, "stdin: %s\n", error_message(errno));
+  if (argc)             { tag      = argv[0]; argv++; argc--; }
+  if (argc && mode > 0) { kvnostr  = argv[0]; argv++; argc--; }
+  if (argc)             { etypestr = argv[0]; argv++; argc--; }
+  if (argc || !tag || (mode > 0 && !kvnostr) || !etypestr) {
+    fprintf(stderr, "usage: %s [-k key | -s salt] tag%s enctype\n",
+            cmd, mode ? " kvno" : "");
     return 0;
   }
 
-  in_text.data = buf;
-  in_text.size = n;
-  out_text.data = buf;
-  out_text.size = sizeof(buf);
+  if (mode > 0) {
+    kvno = strtol(kvnostr, &x, 10);
+    if (*x || kvno < 0 || kvno > 0x7fffffff) {
+      fprintf(stderr, "invalid kvno %s\n", kvnostr);
+      return 0;
+    }
+  }
 
-  err = mkey_decrypt(argv[1], kvno, &in_text, &out_text);
+  if (get_key(etypestr, saltstr, keystr, &enctype, &key))
+    return 0;
+
+  keydata.data = key.keyvalue.data;
+  keydata.size = key.keyvalue.length;
+
+  switch (mode) {
+    case 0: err = mkey_unseal_keys(tag, enctype, &keydata);       break;
+    case 1: err = mkey_set_metakey(tag, kvno, enctype, &keydata); break;
+    case 2: err = mkey_add_key(tag, kvno, enctype, &keydata);     break;
+  }
+
+  krb5_free_keyblock_contents(krb5ctx, &key);
+
   if (err) {
-    fprintf(stderr, "%s %d: %s\n", argv[1], kvno, error_message(err));
-  } else {
-    write(1, buf, out_text.size);
+    if (mode > 0)
+      fprintf(stderr, "%s %d: %s\n", tag, kvno, error_message(err));
+    else
+      fprintf(stderr, "%s: %s\n", tag, error_message(err));
+  } else if (okmsg) {
+    if (mode > 0)
+      printf("%s %d: %s\n", tag, kvno, okmsg);
+    else
+      printf("%s: %s\n", tag, okmsg);
   }
   return 0;
 }
 
-
 static int do_add(int argc, char **argv)
 {
-  krb5_error_code kerr;
-  krb5_enctype enctype;
-  krb5_keyblock key;
-  krb5_salt salt;
-  MKey_Error err;
-  MKey_DataBlock keydata;
-  long kvno;
-  char pwstring[1024];
-  char *x;
-
-  if (argc < 4 || argc > 5 || !argv[1][0] || !argv[2][0] || !argv[3][0]) {
-    fprintf(stderr, "usage: add tag kvno enctype [salt]\n");
-    return 0;
-  }
-  kvno = strtol(argv[2], &x, 10);
-  if (*x || kvno < 0 || kvno > 0x7fffffff) {
-    fprintf(stderr, "invalid kvno %s\n", argv[2]);
-    return 0;
-  }
-  kerr = krb5_string_to_enctype(krb5ctx, argv[3], &enctype);
-  if (kerr) {
-    fprintf(stderr, "%s: %s", argv[3], error_message(err));
-    return 0;
-  }
-  if (argc < 5) {
-    salt.salttype = KRB5_PW_SALT;
-    salt.saltvalue.data = NULL;
-    salt.saltvalue.length = 0;
-  } else {
-    salt.salttype = KRB5_PW_SALT;
-    salt.saltvalue.data = argv[4];
-    salt.saltvalue.length = strlen(argv[4]);
-  }
-
-  if (des_read_pw_string(pwstring, sizeof(pwstring), "Password: ", 1))
-    return 0;
-  krb5_string_to_key_salt(krb5ctx, enctype, pwstring, salt, &key);
-  keydata.data = key.keyvalue.data;
-  keydata.size = key.keyvalue.length;
-  err = mkey_add_key(argv[1], kvno, enctype, &keydata);
-  krb5_free_keyblock_contents(krb5ctx, &key);
-
-  if (err) {
-    fprintf(stderr, "%s %d: %s\n", argv[1], kvno, error_message(err));
-  } else {
-    printf("%s %d: key added\n", argv[1], kvno);
-  }
-  return 0;
+  return key_entry_cmd(argc, argv, 2, "key added");
 }
 
 
@@ -277,6 +347,161 @@ static int do_list(int argc, char **argv)
 }
 
 
+static int do_e2str(int argc, char **argv)
+{
+  MKey_Error err;
+  long enctype;
+  char etypestr[256], *x;
+
+  if (argc != 2) {
+    fprintf(stderr, "usage: etype2str enctype-number\n");
+    return 0;
+  }
+
+  enctype = strtol(argv[1], &x, 10);
+  if (*x || enctype < 0 || enctype > 0x7fffffff) {
+    fprintf(stderr, "invalid enctype %s\n", argv[1]);
+    return 0;
+  }
+
+  err = mkey_enctype_to_string(enctype, etypestr, sizeof(etypestr));
+  if (err) {
+    fprintf(stderr, "mkey_enctype_to_string: %s\n", error_message(err));
+  } else {
+    printf("%d -> %s\n", enctype, etypestr);
+  }
+  return 0;
+}
+
+
+static int do_str2e(int argc, char **argv)
+{
+  MKey_Integer enctype;
+  MKey_Error err;
+
+  if (argc != 2) {
+    fprintf(stderr, "usage: str2etype enctype\n");
+    return 0;
+  }
+
+  err = mkey_string_to_enctype(argv[1], &enctype);
+  if (err) {
+    fprintf(stderr, "mkey_string_to_enctype: %s\n", error_message(err));
+  } else {
+    printf("%s -> %d\n", argv[1], enctype);
+  }
+  return 0;
+}
+
+
+static int do_str2k(int argc, char **argv)
+{
+  krb5_enctype enctype;
+  krb5_keyblock key;
+  char *etypestr = 0, *saltstr = 0, *keystr = 0;
+
+  if      (argc > 1 && !strcmp(argv[0], "-k")) {
+    keystr  = argv[1];
+    argv += 2; argc -= 2;
+  } else if (argc > 1 && !strcmp(argv[0], "-s")) {
+    saltstr = argv[1];
+    argv += 2; argc -= 2;
+  }
+
+  if (argc) { etypestr = argv[0]; argv++; argc--; }
+  if (argc || !etypestr) {
+    fprintf(stderr, "usage: str2key [-k key | -s salt] enctype\n");
+    return 0;
+  }
+
+  if (get_key(etypestr, saltstr, keystr, &enctype, &key))
+    return 0;
+
+  print_key(key.keyvalue.data, key.keyvalue.length);
+  krb5_free_keyblock_contents(krb5ctx, &key);
+  return 0;
+}
+
+
+static int do_genkey(int argc, char **argv)
+{
+  MKey_Error err;
+  MKey_DataBlock key;
+  krb5_enctype enctype;
+  char buf[1024];
+
+  if (argc != 2) {
+    fprintf(stderr, "usage: genkey enctype\n");
+    return 0;
+  }
+
+  err = krb5_string_to_enctype(krb5ctx, argv[1], &enctype);
+  if (err) {
+    fprintf(stderr, "%s: %s\n", argv[1], error_message(err));
+    return 0;
+  }
+
+  key.data = buf;
+  key.size = sizeof(buf);
+  err = mkey_generate_key(enctype, &key);
+  if (err) {
+    fprintf(stderr, "%s: %s\n", argv[1], error_message(err));
+    return 0;
+  }
+
+  print_key(key.data, key.size);
+  return 0;
+}
+
+
+static int do_getmeta(int argc, char **argv)
+{
+  MKey_Integer kvno, enctype, state;
+  MKey_Error err;
+  char *statestr;
+  char *etype;
+
+  if (argc != 2) {
+    fprintf(stderr, "usage: getmeta tag\n");
+    return 0;
+  }
+
+  err = mkey_get_metakey_info(argv[1], &kvno, &enctype, &state);
+  if (err) {
+    fprintf(stderr, "%s: %s\n", argv[1], error_message(err));
+    return 0;
+  }
+
+  switch (state) {
+    case 0: statestr  = "keys not sealed; meta key not set"; break;
+    case 1: statestr  = "keys not sealed; meta key set";     break;
+    case 2: statestr  = "key sealed";                        break;
+    default: statestr = "state unknown";
+  }
+
+  err = krb5_enctype_to_string(krb5ctx, enctype, &etype);
+  if (err) {
+    fprintf(stderr, "%s: etype %d: %s\n", argv[1], enctype, error_message(err));
+    return 0;
+  }
+
+  printf("%s meta kvno %d %s %s (%d)\n", argv[1], kvno, etype, statestr, state);
+  return 0;
+}
+
+
+static int do_unseal(int argc, char **argv)
+{
+  return key_entry_cmd(argc, argv, 0, "keys unsealed");
+}
+
+
+static int do_setmeta(int argc, char **argv)
+{
+  return key_entry_cmd(argc, argv, 0, "meta key set");
+}
+
+
 static int do_shutdown(int argc, char **argv)
 {
   MKey_Error err;
@@ -309,41 +534,85 @@ static int do_exit(int argc, char **argv)
 
 static SL_cmd commands[] = {
   {
-    "encrypt",    do_encrypt,      "encrypt tag kvno",
+    "encrypt",    do_encrypt,    "encrypt tag kvno",
     "Encrypt data using the specified tag and kvno.  Plaintext is\n"
     "read from stdin, and ciphertext written to stdout."
   },
   {
-    "decrypt",    do_decrypt,      "decrypt tag kvno",
+    "decrypt",    do_decrypt,    "decrypt tag kvno",
     "Decrypt data using the specified tag and kvno.  Ciphertext is\n"
     "read from stdin, and plaintext written to stdout."
   },
   {
-    "add",        do_add,          "add tag kvno enctype",
+    "add",        do_add,        "add [-k key | -s salt] tag kvno enctype",
     "Add a key for the specified tag and kvno to the mkey server.\n"
-    "The key is obtained by prompting for a password to be converted\n"
-    "to a key of the specified enctype."
+    "The key may be provided as a hexadecimal string using the -k option;\n"
+    "otherwise it is obtained by prompting for a password to be converted\n"
+    "to a key of the specified enctype.  The -s option may be used to set\n"
+    "a salt string to be used; if not given, the empty string is used."
   },
   {
-    "remove",     do_remove,       "remove tag kvno",
+    "remove",     do_remove,     "remove tag kvno",
     "Remove the key for the specified tag and kvno from the mkey server."
   },
   {
-    "verify",     do_verify,       "verify tag kvno",
+    "verify",     do_verify,     "verify tag kvno",
     "Verify that a key for the specified tag and kvno exists in the server."
   },
   {
-    "list",       do_list,         "list [tag]",
+    "list",       do_list,       "list [tag]",
     "List current keys for the specified tag.  If no tag is given, all\n"
     "keys are listed."
   },
   {
-    "shutdown",   do_shutdown,     "shutdown",
+    "genkey",     do_genkey,     "genkey enctype",
+    "Generate a random key of the specified enctype."
+  },
+  {
+    "etype2str",  do_e2str,      "etype2str enctype-number",
+    "Print the name string for the specified enctype number."
+  },
+  {
+    "str2etype",  do_str2e,      "str2etype enctype",
+    "Print the enctype number for the specified enctype."
+  },
+  {
+    "str2key",    do_str2k,      "str2key [-k key | -s salt] enctype",
+    "Print the specified encryption key as a hex string.\n"
+    "The key may be provided as a hexadecimal string using the -k option;\n"
+    "otherwise it is obtained by prompting for a password to be converted\n"
+    "to a key of the specified enctype.  The -s option may be used to set\n"
+    "a salt string to be used; if not given, the empty string is used."
+  },
+  {
+    "getmeta",    do_getmeta,    "getmeta tag",
+    "Get the meta key version, enctype, and state of sealed keys for the\n"
+    "specified tag."
+  },
+  {
+    "unseal",     do_unseal,     "unseal [-k key | -s salt] tag enctype",
+    "Unseal master keys for the specified tag using a provided meta key\n"
+    "The key may be provided as a hexadecimal string using the -k option;\n"
+    "otherwise it is obtained by prompting for a password to be converted\n"
+    "to a key of the specified enctype.  The -s option may be used to set\n"
+    "a salt string to be used; if not given, the empty string is used."
+  },
+  {
+    "setmeta",    do_setmeta,    "setmeta [-k key | -s salt] tag kvno enctype",
+    "Set the meta key used to encrypt stored master keys for the specified\n"
+    "tag, and associate the meta key with the given key version number.\n"
+    "The key may be provided as a hexadecimal string using the -k option;\n"
+    "otherwise it is obtained by prompting for a password to be converted\n"
+    "to a key of the specified enctype.  The -s option may be used to set\n"
+    "a salt string to be used; if not given, the empty string is used."
+  },
+  {
+    "shutdown",   do_shutdown,   "shutdown",
     "Shut down the master key server."
   },
-  { "help",       do_help,         "help" },
+  { "help",       do_help,       "help" },
   { "?"},
-  { "exit",       do_exit,         "exit" },
+  { "exit",       do_exit,       "exit" },
   { "quit" },
   { NULL }
 };
