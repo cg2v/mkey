@@ -63,6 +63,8 @@ static MKey_Error op_generate_key     (MKey_Integer, char *, int, char *, int *)
 static MKey_Error op_get_metakey_info (MKey_Integer, char *, int, char *, int *);
 static MKey_Error op_unseal_keys      (MKey_Integer, char *, int, char *, int *);
 static MKey_Error op_set_metakey      (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_string_to_etype  (MKey_Integer, char *, int, char *, int *);
+static MKey_Error op_etype_to_string  (MKey_Integer, char *, int, char *, int *);
 
 static opfunc operations[] = {
   op_encrypt,          /* MKEY_OP_ENCRYPT           */
@@ -77,6 +79,8 @@ static opfunc operations[] = {
   op_get_metakey_info, /* MKEY_OP_GET_METAKEY_INFO  */
   op_unseal_keys,      /* MKEY_OP_UNSEAL_KEYS       */
   op_set_metakey,      /* MKEY_OP_SET_METAKEY       */
+  op_string_to_etype,  /* MKEY_OP_STRING_TO_ETYPE   */
+  op_etype_to_string,  /* MKEY_OP_ETYPE_TO_STRING   */
 };
 #define n_operations (sizeof(operations) / sizeof(operations[0]))
 
@@ -801,6 +805,53 @@ static MKey_Error op_set_metakey(MKey_Integer cookie, char *reqbuf, int reqlen,
 
   syslog(LOG_INFO, "set %s metakey kvno %d", tagname, intargs[0]);
   return _mkey_encode(repbuf, replen, cookie, 0, 0, 0, 0, 0);
+}
+
+
+static MKey_Error op_string_to_etype(MKey_Integer cookie, char *reqbuf, int reqlen,
+                                     char *repbuf, int *replen)
+{
+  MKey_Integer enctype;
+  MKey_Error err;
+  krb5_context ctx;
+  krb5_enctype etype;
+  char *str;
+
+  err = _mkey_decode(reqbuf, reqlen, 0, 0, 0, 0, 0, &str);
+  if (err) return err;
+
+  err = context_setup(&ctx);
+  if (err) return err;
+
+  err = krb5_string_to_enctype(ctx, str, &etype);
+  if (err) return err;
+
+  enctype = etype;
+  err = _mkey_encode(repbuf, replen, cookie, 0, 1, &enctype, 0, 0);
+  return err;
+}
+
+
+static MKey_Error op_etype_to_string(MKey_Integer cookie, char *reqbuf, int reqlen,
+                                     char *repbuf, int *replen)
+{
+  MKey_Integer enctype;
+  MKey_Error err;
+  krb5_context ctx;
+  char *str;
+
+  err = _mkey_decode(reqbuf, reqlen, 1, &enctype, 0, 0, 0, 0);
+  if (err) return err;
+
+  err = context_setup(&ctx);
+  if (err) return err;
+
+  err = krb5_enctype_to_string(ctx, enctype, &str);
+  if (err) return err;
+
+  err = _mkey_encode(repbuf, replen, cookie, 0, 0, 0, 0, str);
+  free(str);
+  return err;
 }
 
 

@@ -195,3 +195,21 @@ SET_METAKEY (11)
    one meta key can be set for any given tag; therefore, this command
    will return an error if there are sealed keys for the specified
    tag.
+
+
+STRING_TO_ETYPE (12)
+   String    name
+   ========
+   Integer   enctype
+
+   Parses a string containing the name of a Kerberos encryption type,
+   and returns the corresponding enctype value.
+
+
+ETYPE_TO_STRING (13)
+   Integer   enctype
+   ========
+   String    name
+
+   Returns a string containing the name of the specified Kerberos
+   encryption type.

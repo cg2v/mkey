@@ -328,6 +328,161 @@ MKey_Error mkey_list_tag(MKey_Integer tagid, char *tag, int bufsize)
 }
 
 
+MKey_Error mkey_generate_key(MKey_Integer enctype, MKey_DataBlock *key)
+{
+  MKey_DataBlock outdata;
+  MKey_Integer cookie;
+  MKey_Error err;
+  int reqlen, replen;
+  char *repptr;
+
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_GENERATE_KEY,
+                     1, &enctype, 0, 0);
+  if (err) return err;
+
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, &outdata, 0);
+  if (err) return err;
+
+  if (outdata.size > key->size)
+    return MKEY_ERR_OVERFLOW;
+  memcpy(key->data, outdata.data, outdata.size);
+  key->size = outdata.size;
+
+  return 0;
+}
+
+
+MKey_Error mkey_string_to_enctype(char *name, MKey_Integer *enctype)
+{
+  MKey_Integer cookie;
+  MKey_Error err;
+  int reqlen, replen;
+  char *repptr;
+
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_STRING_TO_ETYPE,
+                     0, 0, 0, name);
+  if (err) return err;
+
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 1, enctype, 0, 0, 0, 0);
+  if (err) return err;
+
+  return 0;
+}
+
+
+MKey_Error mkey_enctype_to_string(MKey_Integer enctype, char *name, int bufsize)
+{
+  MKey_Integer cookie;
+  MKey_Error err;
+  int reqlen, replen;
+  char *repptr, *nameout;
+
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_ETYPE_TO_STRING,
+                     1, &enctype, 0, 0);
+  if (err) return err;
+
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, 0, &nameout);
+  if (err) return err;
+
+  if (!bufsize || strlen(nameout) > bufsize - 1)
+    return MKEY_ERR_OVERFLOW;
+  strcpy(name, nameout);
+  return 0;
+}
+
+
+MKey_Error mkey_get_metakey_info(char *tag, MKey_Integer *state,
+                                 MKey_Integer *kvno, MKey_Integer *enctype)
+{
+  MKey_Integer cookie, iresult[3];
+  MKey_Error err;
+  int reqlen, replen;
+  char *repptr;
+
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_GET_METAKEY_INFO,
+                     0, 0, 0, tag);
+  if (err) return err;
+
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 3, iresult, 0, 0, 0, 0);
+  if (err) return err;
+
+  *state = iresult[0];
+  *kvno = iresult[1];
+  *enctype = iresult[2];
+  return 0;
+}
+
+
+MKey_Error mkey_unseal_keys(char *tag, MKey_Integer enctype, MKey_DataBlock *key)
+{
+  MKey_Integer cookie;
+  MKey_Error err;
+  int reqlen, replen;
+  char *repptr;
+
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_UNSEAL_KEYS,
+                     1, &enctype, key, tag);
+  if (err) return err;
+
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, 0, 0);
+  if (err) return err;
+
+  return 0;
+}
+
+
+MKey_Error mkey_set_metakey(char *tag, MKey_Integer kvno,
+                            MKey_Integer enctype, MKey_DataBlock *key)
+{
+  MKey_Integer intargs[2];
+  MKey_Integer cookie;
+  MKey_Error err;
+  int reqlen, replen;
+  char *repptr;
+
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  intargs[0] = kvno;
+  intargs[1] = enctype;
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_SET_METAKEY,
+                     2, intargs, key, tag);
+  if (err) return err;
+
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, 0, 0);
+  if (err) return err;
+
+  return 0;
+}
+
+
 MKey_Error mkey_shutdown(void)
 {
   MKey_Integer cookie;

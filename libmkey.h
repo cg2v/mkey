@@ -53,5 +53,17 @@ extern MKey_Error mkey_verify_key(char *tag, MKey_Integer kvno);
 extern MKey_Error mkey_find_largest_kvno(char *tag, MKey_Integer *kvno);
 extern MKey_Error mkey_list_keys(char *tag, MKey_Integer *nkeys, MKey_KeyInfo *keys);
 extern MKey_Error mkey_list_tag(MKey_Integer tagid, char *tag, int bufsize);
+
+extern MKey_Error mkey_generate_key(MKey_Integer enctype, MKey_DataBlock *key);
+extern MKey_Error mkey_string_to_enctype(char *name, MKey_Integer *enctype);
+extern MKey_Error mkey_enctype_to_string(MKey_Integer enctype, char *name, int bufsize);
+
+extern MKey_Error mkey_get_metakey_info(char *tag, MKey_Integer *state,
+                                        MKey_Integer *kvno, MKey_Integer *enctype);
+extern MKey_Error mkey_unseal_keys(char *tag, MKey_Integer enctype, MKey_DataBlock *key);
+extern MKey_Error mkey_set_metakey(char *tag, MKey_Integer kvno,
+                                   MKey_Integer enctype, MKey_DataBlock *key);
+
 extern MKey_Error mkey_shutdown(void);
+
 extern void mkey_set_socket_name(char *);
