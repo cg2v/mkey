@@ -3,12 +3,16 @@
  * Usage: update_meta <tag> <enctype>
  */
 
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/resource.h>
 #include <sys/mman.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <errno.h>
+#include <unistd.h>
 #include <string.h>
+#include <ctype.h>
+#include <errno.h>
 
 #include <openssl/err.h>
 #include <openssl/rsa.h>
@@ -69,11 +73,14 @@ out:
 
 
 int main(int argc, char **argv) {
+  struct stat sbuf;
   struct rlimit rl;
   MKey_Error err;
   MKey_DataBlock keydata;
   MKey_Integer enctype, meta_enctype, meta_kvno, meta_state;
-  char *tag, *etypestr;
+  char *tag, *etypestr, *filename;
+  FILE *UF;
+  char username[256], *u, *x;
 
   initialize_mkey_error_table();
 
@@ -130,16 +137,54 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
-  /* XXX encrypt it for each user */
-  err = encrypt_one(tag, "jhutz", meta_kvno, &keydata);
-  if (err == -1) {
-    fprintf(stderr, "%s: OpenSSL failure; details follow...\n", "jhutz");
-    ERR_print_errors_fp(stderr);
-    exit(1);
-  } else if (err) {
-    fprintf(stderr, "%s: %s\n", "jhutz", error_message(err));
+  /* make sure the data directory exists */
+  err = stat(HDB_DB_DIR "/mkey_data", &sbuf);
+  if (!err && !S_ISDIR(sbuf.st_mode)) {
+    fprintf(stderr, "%s: %s\n", HDB_DB_DIR "/mkey_data", strerror(ENOTDIR));
     exit(1);
   }
+  if (err && errno == ENOENT)
+    err = mkdir(HDB_DB_DIR "/mkey_data", 0755);
+  if (err) {
+    fprintf(stderr, "%s: %s\n", HDB_DB_DIR "/mkey_data", strerror(errno));
+    exit(1);
+  }
+
+  /* open user list */
+  filename = malloc(strlen(HDB_DB_DIR) + strlen(tag) + 32);
+  if (!filename) {
+    fprintf(stderr, "%s: out of memory!\n", tag);
+    exit(1);
+  }
+  sprintf(filename, "%s/mkey_users.%s", HDB_DB_DIR, tag);
+  UF = fopen(filename, "r");
+  if (!UF) {
+    fprintf(stderr, "%s: %s\n", filename, strerror(errno));
+    exit(1);
+  }
+
+  /* encrypt it for each user */
+  while (fgets(username, sizeof(username), UF)) {
+    for (u = username; isspace(*u); u++);
+    if (!*u || *u == '#') continue;
+    for (x = u; *x && !isspace(*x) && *x != '#'; x++);
+    *x = 0;
+
+    err = encrypt_one(tag, u, meta_kvno, &keydata);
+    if (err == -1) {
+      fprintf(stderr, "%s: OpenSSL failure; details follow...\n", u);
+      ERR_print_errors_fp(stderr);
+      exit(1);
+    } else if (err) {
+      fprintf(stderr, "%s: %s\n", u, error_message(err));
+      exit(1);
+    }
+  }
+  if (ferror(UF)) {
+    fprintf(stderr, "%s: %s\n", filename, strerror(errno));
+    exit(1);
+  }
+  fclose(UF);
 
   /* update mkeyd */
   err = mkey_set_metakey(tag, meta_kvno, enctype, &keydata);
