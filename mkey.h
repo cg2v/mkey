@@ -44,3 +44,11 @@
 #define MKEY_FACILITY       LOG_LOCAL1            /* syslog facility */
 #define MKEY_MAXSIZE        4096
 #define MKEY_HDRSIZE        8
+
+extern MKey_Error _mkey_encode(char *, int *, MKey_Integer, MKey_Integer,
+                               int, MKey_Integer *, MKey_DataBlock *, char *);
+extern MKey_Error _mkey_decode_header(char *, int,
+                                      MKey_Integer *, MKey_Integer *);
+extern MKey_Error _mkey_decode(char *, int, int, MKey_Integer *,
+                               MKey_Integer *, MKey_KeyInfo *,
+                               MKey_DataBlock *, char **);

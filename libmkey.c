@@ -44,25 +44,25 @@
 
 static char req_buf[MKEY_MAXSIZE + 1];
 static char rep_buf[MKEY_MAXSIZE + 1];
-static MKey_Integer cookie = 0;
+static MKey_Integer global_cookie = 0;
 static int mkeyd_sock = -1;
 
 
-static void mkheader(MKey_Integer reqid)
+static MKey_Integer getcookie()
 {
-  if (!cookie) {
+  if (!global_cookie) {
     srand(time(0) ^ getpid());
-    cookie = rand();
+    global_cookie = rand();
   }
-  cookie++;
-  memcpy(req_buf + 0, &cookie, 4);
-  memcpy(req_buf + 4, &reqid, 4);
+  global_cookie++;
+  return global_cookie;
 }
 
-static MKey_Error do_request(int reqlen, int *replen, char **repptr)
+static MKey_Error do_request(MKey_Integer cookie, int reqlen,
+                             int *replen, char **repptr)
 {
   MKey_Integer rcookie;
-  MKey_Error err, lasterr;
+  MKey_Error err, errcode, lasterr;
   door_arg_t arg;
   int try;
 
@@ -106,24 +106,18 @@ static MKey_Error do_request(int reqlen, int *replen, char **repptr)
 
     try++;
 
-    if (*replen < MKEY_HDRSIZE) {
-      lasterr = MKEY_ERR_REP_FORMAT;
+    err = _mkey_decode_header(*repptr, *replen, &rcookie, &errcode);
+    if (err) {
+      lasterr = err;
       continue;
     }
 
-    memcpy(&rcookie, *repptr, 4);
     if (rcookie != cookie) {
       lasterr = MKEY_ERR_REP_COOKIE;
       continue;
     }
 
-    memcpy(&err, *repptr + 4, 4);
-    if (err) return err;
-
-    if (*replen > MKEY_MAXSIZE)
-      return MKEY_ERR_TOO_BIG;
-    (*repptr)[*replen] = 0;
-    return 0;
+    return errcode;
   }
   return lasterr;
 }
@@ -132,33 +126,23 @@ static MKey_Error do_request(int reqlen, int *replen, char **repptr)
 MKey_Error mkey_encrypt(char *tag, MKey_Integer kvno, 
                         MKey_DataBlock *in, MKey_DataBlock *out)
 {
+  MKey_Integer cookie;
   MKey_Error err;
-  MKey_Integer outsize;
   int reqlen, replen;
   char *repptr;
 
-  reqlen = MKEY_HDRSIZE + 8 + in->size + strlen(tag) + 1;
-  if (reqlen > MKEY_MAXSIZE)
-    return MKEY_ERR_TOO_BIG;
-
-  mkheader(MKEY_OP_ENCRYPT);
-  memcpy(req_buf + MKEY_HDRSIZE, &kvno, 4);
-  memcpy(req_buf + MKEY_HDRSIZE + 4, &(in->size), 4);
-  memcpy(req_buf + MKEY_HDRSIZE + 8, in->data, in->size);
-  strcpy(req_buf + MKEY_HDRSIZE + 8 + in->size, tag);
-
-  err = do_request(reqlen, &replen, &repptr);
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_ENCRYPT,
+                     1, &kvno, in, tag);
   if (err) return err;
 
-  if (replen < MKEY_HDRSIZE + 4)
-    return MKEY_ERR_REP_FORMAT;
-  memcpy(&outsize, repptr + MKEY_HDRSIZE, 4);
-  if (replen != MKEY_HDRSIZE + 4 + outsize)
-    return MKEY_ERR_REP_FORMAT;
-  if (outsize > out->size)
-    return MKEY_ERR_OVERFLOW;
-  memcpy(out->data, repptr + MKEY_HDRSIZE + 4, outsize);
-  out->size = outsize;
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, out, 0);
+  if (err) return err;
+
   return 0;
 }
 
@@ -166,33 +150,23 @@ MKey_Error mkey_encrypt(char *tag, MKey_Integer kvno,
 MKey_Error mkey_decrypt(char *tag, MKey_Integer kvno, 
                         MKey_DataBlock *in, MKey_DataBlock *out)
 {
+  MKey_Integer cookie;
   MKey_Error err;
-  MKey_Integer outsize;
   int reqlen, replen;
   char *repptr;
 
-  reqlen = MKEY_HDRSIZE + 8 + in->size + strlen(tag) + 1;
-  if (reqlen > MKEY_MAXSIZE)
-    return MKEY_ERR_TOO_BIG;
-
-  mkheader(MKEY_OP_DECRYPT);
-  memcpy(req_buf + MKEY_HDRSIZE, &kvno, 4);
-  memcpy(req_buf + MKEY_HDRSIZE + 4, &(in->size), 4);
-  memcpy(req_buf + MKEY_HDRSIZE + 8, in->data, in->size);
-  strcpy(req_buf + MKEY_HDRSIZE + 8 + in->size, tag);
-
-  err = do_request(reqlen, &replen, &repptr);
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_DECRYPT,
+                     1, &kvno, in, tag);
   if (err) return err;
 
-  if (replen < MKEY_HDRSIZE + 4)
-    return MKEY_ERR_REP_FORMAT;
-  memcpy(&outsize, repptr + MKEY_HDRSIZE, 4);
-  if (replen != MKEY_HDRSIZE + 4 + outsize)
-    return MKEY_ERR_REP_FORMAT;
-  if (outsize > out->size)
-    return MKEY_ERR_OVERFLOW;
-  memcpy(out->data, repptr + MKEY_HDRSIZE + 4, outsize);
-  out->size = outsize;
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, out, 0);
+  if (err) return err;
+
   return 0;
 }
 
@@ -200,105 +174,95 @@ MKey_Error mkey_decrypt(char *tag, MKey_Integer kvno,
 MKey_Error mkey_add_key(char *tag, MKey_Integer kvno,
                         MKey_Integer enctype, MKey_DataBlock *key)
 {
+  MKey_Integer intargs[2];
+  MKey_Integer cookie;
   MKey_Error err;
   int reqlen, replen;
   char *repptr;
 
-  reqlen = MKEY_HDRSIZE + 12 + key->size + strlen(tag) + 1;
-  if (reqlen > MKEY_MAXSIZE)
-    return MKEY_ERR_TOO_BIG;
-
-  mkheader(MKEY_OP_ADD_KEY);
-  memcpy(req_buf + MKEY_HDRSIZE,      &kvno, 4);
-  memcpy(req_buf + MKEY_HDRSIZE + 4,  &enctype, 4);
-  memcpy(req_buf + MKEY_HDRSIZE + 8,  &(key->size), 4);
-  memcpy(req_buf + MKEY_HDRSIZE + 12, key->data, key->size);
-  strcpy(req_buf + MKEY_HDRSIZE + 12 + key->size, tag);
-
-  err = do_request(reqlen, &replen, &repptr);
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  intargs[0] = kvno;
+  intargs[1] = enctype;
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_ADD_KEY,
+                     2, intargs, key, tag);
   if (err) return err;
 
-  if (replen != MKEY_HDRSIZE)
-    return MKEY_ERR_REP_FORMAT;
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, 0, 0);
+  if (err) return err;
+
   return 0;
 }
 
 
 MKey_Error mkey_remove_key(char *tag, MKey_Integer kvno)
 {
+  MKey_Integer cookie;
   MKey_Error err;
   int reqlen, replen;
   char *repptr;
 
-  reqlen = MKEY_HDRSIZE + 4 + strlen(tag) + 1;
-  if (reqlen > MKEY_MAXSIZE)
-    return MKEY_ERR_TOO_BIG;
-
-  mkheader(MKEY_OP_REMOVE_KEY);
-  memcpy(req_buf + MKEY_HDRSIZE,     &kvno, 4);
-  strcpy(req_buf + MKEY_HDRSIZE + 4, tag);
-
-  err = do_request(reqlen, &replen, &repptr);
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_REMOVE_KEY,
+                     1, &kvno, 0, tag);
   if (err) return err;
 
-  if (replen != MKEY_HDRSIZE)
-    return MKEY_ERR_REP_FORMAT;
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, 0, 0);
+  if (err) return err;
+
   return 0;
 }
 
 
 MKey_Error mkey_verify_key(char *tag, MKey_Integer kvno)
 {
+  MKey_Integer cookie;
   MKey_Error err;
   int reqlen, replen;
   char *repptr;
 
-  reqlen = MKEY_HDRSIZE + 4 + strlen(tag) + 1;
-  if (reqlen > MKEY_MAXSIZE)
-    return MKEY_ERR_TOO_BIG;
-
-  mkheader(MKEY_OP_VERIFY_KEY);
-  memcpy(req_buf + MKEY_HDRSIZE,     &kvno, 4);
-  strcpy(req_buf + MKEY_HDRSIZE + 4, tag);
-
-  err = do_request(reqlen, &replen, &repptr);
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_VERIFY_KEY,
+                     1, &kvno, 0, tag);
   if (err) return err;
 
-  if (replen != MKEY_HDRSIZE)
-    return MKEY_ERR_REP_FORMAT;
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, 0, 0);
+  if (err) return err;
+
   return 0;
 }
 
 
 MKey_Error mkey_list_keys(char *tag, MKey_Integer *nkeys, MKey_KeyInfo *keys)
 {
+  MKey_Integer cookie;
   MKey_Error err;
-  MKey_Integer onkeys;
-  int reqlen, replen, i;
+  int reqlen, replen;
   char *repptr;
 
-  reqlen = MKEY_HDRSIZE + strlen(tag) + 1;
-  if (reqlen > MKEY_MAXSIZE)
-    return MKEY_ERR_TOO_BIG;
-
-  mkheader(MKEY_OP_LIST_KEYS);
-  strcpy(req_buf + MKEY_HDRSIZE, tag);
-
-  err = do_request(reqlen, &replen, &repptr);
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_LIST_KEYS,
+                     0, 0, 0, tag);
   if (err) return err;
 
-  if (replen < MKEY_HDRSIZE + 4)
-    return MKEY_ERR_REP_FORMAT;
-  memcpy(&onkeys, repptr + MKEY_HDRSIZE, 4);
-  if (replen != MKEY_HDRSIZE + 4 + onkeys * 8)
-    return MKEY_ERR_REP_FORMAT;
-  if (onkeys > *nkeys)
-    return MKEY_ERR_OVERFLOW;
-  for (i = 0; i < onkeys; i++) {
-    memcpy(&keys[i].kvno,    repptr + MKEY_HDRSIZE + 4 + 2*i, 4);
-    memcpy(&keys[i].enctype, repptr + MKEY_HDRSIZE + 4 + 2*i + 4, 4);
-  }
-  *nkeys = onkeys;
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 0, 0, nkeys, keys, 0, 0);
+  if (err) return err;
+
   return 0;
 }
 
@@ -324,40 +288,47 @@ MKey_Error mkey_find_largest_kvno(char *tag, MKey_Integer *kvno)
 
 MKey_Error mkey_list_tag(MKey_Integer tagid, char *tag, int bufsize)
 {
+  MKey_Integer cookie;
   MKey_Error err;
   int reqlen, replen;
-  char *repptr;
+  char *repptr, *tagout;
 
-  reqlen = MKEY_HDRSIZE + 4;
-  if (reqlen > MKEY_MAXSIZE)
-    return MKEY_ERR_TOO_BIG;
-
-  mkheader(MKEY_OP_LIST_TAG);
-  memcpy(req_buf + MKEY_HDRSIZE, &tagid, 4);
-
-  err = do_request(reqlen, &replen, &repptr);
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_LIST_TAG,
+                     1, &tagid, 0, 0);
   if (err) return err;
 
-  if (replen < MKEY_HDRSIZE)
-    return MKEY_ERR_REP_FORMAT;
-  if (replen - MKEY_HDRSIZE + 1 > bufsize)
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, 0, &tagout);
+  if (err) return err;
+
+  if (!bufsize || strlen(tagout) > bufsize - 1)
     return MKEY_ERR_OVERFLOW;
-  strcpy(tag, repptr + MKEY_HDRSIZE);
+  strcpy(tag, tagout);
   return 0;
 }
 
 
 MKey_Error mkey_shutdown(void)
 {
+  MKey_Integer cookie;
   MKey_Error err;
   int reqlen, replen;
-  char *repptr;
+  char *repptr, *tagout;
 
-  reqlen = MKEY_HDRSIZE;
-  mkheader(MKEY_OP_SHUTDOWN);
-  err = do_request(reqlen, &replen, &repptr);
+  reqlen = MKEY_MAXSIZE;
+  cookie = getcookie();
+  err = _mkey_encode(req_buf, &reqlen, cookie, MKEY_OP_SHUTDOWN,
+                     0, 0, 0, 0);
   if (err) return err;
-  if (replen != MKEY_HDRSIZE)
-    return MKEY_ERR_REP_FORMAT;
+
+  err = do_request(cookie, reqlen, &replen, &repptr);
+  if (err) return err;
+
+  err = _mkey_decode(repptr, replen, 0, 0, 0, 0, 0, 0);
+  if (err) return err;
   return 0;
 }

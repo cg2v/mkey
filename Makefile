@@ -58,10 +58,13 @@ ${DESTDIR}/usr/local/lib/libmkey.so.$V : libmkey.so.$V
 ${CMNDEST}/usr/local/include/% : % ; ${CPRULE}
 
 
-libmkey.so.$V: libmkey.o mkey_err.o
+libmkey.so.$V: libmkey.o mkeycode.o mkey_err.o
 	${LD} ${LDFLAGS} -G -h $@ -o $@ $^ -ldoor -lcom_err
 
-libmkey.o: libmkey.c libmkey.h mkey_err.h
+libmkey.o: libmkey.c libmkey.h mkey_err.h mkey.h
+	${CC} ${CFLAGS} -KPIC -c -o $@ $<
+
+mkeycode.o: mkeycode.c libmkey.h mkey_err.h mkey.h
 	${CC} ${CFLAGS} -KPIC -c -o $@ $<
 
 mkey_err.o: mkey_err.c mkey_err.h
@@ -78,5 +81,5 @@ mkey.o : mkey.c libmkey.h mkey_err.h
 mkeyd: mkeyd.o libmkey.so.$V
 	${CC} -mt ${LDFLAGS} -o $@ $^ -ldoor -lpthread -lkrb5
 
-mkeyd.o: mkeyd.c mkey.h mkey_err.h
+mkeyd.o: mkeyd.c mkey.h libmkey.h mkey_err.h
 	${CC} -mt ${CFLAGS} -c -o $@ $<

@@ -43,8 +43,9 @@
 #include <krb5_err.h>
 #include <hdb.h>
 
-#include "mkey.h"
+#include "libmkey.h"
 #include "mkey_err.h"
+#include "mkey.h"
 
 typedef int32_t (*opfunc)    (char *, int, char *, int *);
 static int32_t op_encrypt    (char *, int, char *, int *);

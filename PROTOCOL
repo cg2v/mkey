@@ -143,3 +143,53 @@ VERIFY_KEY (7)
    -
 
    Returns success iff the specified key exists.
+
+
+GENERATE_KEY (8)
+   Integer   enctype
+   ========
+   DataBlock keydata
+
+   Generates a random key of the requested enctype, and returns it.
+
+
+GET_METAKEY_INFO (9)
+   String    tag
+   ========
+   Integer   kvno
+   Integer   enctype
+   -
+  
+   Returns the kvno and enctype of the "meta key" needed to decrypt
+   sealed keys loaded from disk for the specified tag.  If there are no
+   sealed keys for the specified tag (for example, the master keytab
+   contained no keys for the specified tag, or the keys have already
+   been unsealed), then zero is returned for both kvno and enctype.
+
+
+UNSEAL_KEYS (10)
+   Integer   enctype
+   DataBlock keydata
+   String    tag
+   ========
+   -
+   
+   Attempt to decrypt sealed keys loaded from disk for the specified
+   tag, using the provided key.  If the key is valid, all keys for
+   the specified tag are unsealed, and the key is saved for use when
+   needed to generate a new master keytab.
+
+
+SET_METAKEY (11)
+   Integer   kvno
+   Integer   enctype
+   DataBlock keydata
+   String    tag
+   ========
+   -
+
+   Change the "meta key" used to encrypt sealed keys for the specified
+   tag.  While the kvno is remembered for reference purposes, only
+   one meta key can be set for any given tag; therefore, this command
+   will return an error if there are unsealed keys for the specified
+   tag.

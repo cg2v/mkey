@@ -43,4 +43,8 @@ error_code OVERFLOW,             "mkey reply data exceeds buffer size"
 error_code TIMEOUT,              "mkey server not responding"
 error_code REP_COOKIE,           "mkey reply cookie does not match"
 error_code NO_MEM,               "mkey server out of memory"
+error_code MSG_FORMAT,           "mkey message format error"
+error_code NO_KEYS,              "mkey server knows no keys"
+error_code SEALED,               "master key is sealed"
+error_code WRONG_KEY,            "incorrect meta key"
 end
