@@ -102,7 +102,7 @@ static int32_t context_setup(krb5_context *ctx)
 
   err = krb5_init_context(ctx);
   if (err) return err;
-  return pthread_setspecific(contextkey, ctx);
+  return pthread_setspecific(contextkey, *ctx);
 }
 
 static void context_destruct(void * ctx)
@@ -236,13 +236,16 @@ static int32_t encrypt_decrypt(char *reqbuf, int reqlen, char *repbuf, int *repl
 
   if (reqlen < MKEY_HDRSIZE + 8)
     return MKEY_ERR_REQ_FORMAT;
-  memcpy(&kvno, reqbuf, 4);
-  memcpy(&textsize, reqbuf + 4, 4);
+  memcpy(&kvno, reqbuf + MKEY_HDRSIZE, 4);
+  memcpy(&textsize, reqbuf + MKEY_HDRSIZE + 4, 4);
   if (reqlen < MKEY_HDRSIZE + 8 + textsize + 1)
     return MKEY_ERR_REQ_FORMAT;
   text = reqbuf + MKEY_HDRSIZE + 8;
   tagname = reqbuf + MKEY_HDRSIZE + 8 + textsize;
   reqbuf[reqlen - 1] = 0;
+
+  syslog(LOG_DEBUG, "%s(%s[%d], %d bytes)", dir ? "encrypt" : "decrypt",
+         tagname, kvno, textsize);
 
   err = find_tag(tagname, &tag, 0);
   if (err) return err;
@@ -256,11 +259,24 @@ static int32_t encrypt_decrypt(char *reqbuf, int reqlen, char *repbuf, int *repl
   err = pthread_mutex_lock(&key->mutex);
   if (err) return err;
 
-  err = MKEY_ERR_NO_KEY;
-  if (!key->enctype
-  ||  (err = krb5_crypto_init(ctx, &key->key, key->enctype, &key->crypto))
-  ||  (err = dir ? krb5_encrypt(ctx, key->crypto, HDB_KU_MKEY, text, textsize, &res)
-                 : krb5_encrypt(ctx, key->crypto, HDB_KU_MKEY, text, textsize, &res))) {
+  if (!key->enctype) {
+    pthread_mutex_unlock(&key->mutex);
+    return MKEY_ERR_NO_KEY;
+  }
+
+  if (!key->crypto) {
+    err = krb5_crypto_init(ctx, &key->key, key->enctype, &key->crypto);
+    if (err) {
+      pthread_mutex_unlock(&key->mutex);
+      return err;
+    }
+  }
+
+  if (dir) 
+    err = krb5_encrypt(ctx, key->crypto, HDB_KU_MKEY, text, textsize, &res);
+  else
+    err = krb5_decrypt(ctx, key->crypto, HDB_KU_MKEY, text, textsize, &res);
+  if (err) {
     pthread_mutex_unlock(&key->mutex);
     return err;
   }
@@ -305,9 +321,9 @@ static int32_t op_add_key(char *reqbuf, int reqlen, char *repbuf, int *replen)
 
   if (reqlen < MKEY_HDRSIZE + 12)
     return MKEY_ERR_REQ_FORMAT;
-  memcpy(&kvno, reqbuf, 4);
-  memcpy(&enctype, reqbuf + 4, 4);
-  memcpy(&keysize, reqbuf + 8, 4);
+  memcpy(&kvno, reqbuf + MKEY_HDRSIZE, 4);
+  memcpy(&enctype, reqbuf + MKEY_HDRSIZE + 4, 4);
+  memcpy(&keysize, reqbuf + MKEY_HDRSIZE + 8, 4);
   if (reqlen < MKEY_HDRSIZE + 12 + keysize + 1)
     return MKEY_ERR_REQ_FORMAT;
   keydata = reqbuf + MKEY_HDRSIZE + 12;
@@ -349,6 +365,8 @@ static int32_t op_add_key(char *reqbuf, int reqlen, char *repbuf, int *replen)
   if (err) return err;
   /* end critical section */
 
+  syslog(LOG_INFO, "added key %s[%d]", tagname, kvno);
+
   *replen = MKEY_HDRSIZE;
   return 0;
 }
@@ -364,7 +382,7 @@ static int32_t op_remove_key(char *reqbuf, int reqlen, char *repbuf, int *replen
 
   if (reqlen < MKEY_HDRSIZE + 4 + 1)
     return MKEY_ERR_REQ_FORMAT;
-  memcpy(&kvno, reqbuf, 4);
+  memcpy(&kvno, reqbuf + MKEY_HDRSIZE, 4);
   tagname = reqbuf + MKEY_HDRSIZE + 4;
   reqbuf[reqlen - 1] = 0;
 
@@ -373,10 +391,13 @@ static int32_t op_remove_key(char *reqbuf, int reqlen, char *repbuf, int *replen
   err = find_key(tag, kvno, &key, 0);
   if (err) return err;
 
-  err = pthread_mutex_lock(&key->mutex);
+  err = context_setup(&ctx);
   if (err) return err;
 
   /* begin critical section */
+  err = pthread_mutex_lock(&key->mutex);
+  if (err) return err;
+
   if (!key->enctype) {
     pthread_mutex_unlock(&key->mutex);
     return MKEY_ERR_NO_KEY;
@@ -385,10 +406,16 @@ static int32_t op_remove_key(char *reqbuf, int reqlen, char *repbuf, int *replen
   free(key->key.keyvalue.data);
   memset(&key->key, 0, sizeof(key->key));
   key->enctype = 0;
+  if (key->crypto) {
+    krb5_crypto_destroy(ctx, key->crypto);
+    key->crypto = 0;
+  }
 
   err = pthread_mutex_unlock(&key->mutex);
   if (err) return err;
   /* end critical section */
+
+  syslog(LOG_INFO, "removed key %s[%d]", tagname, kvno);
 
   *replen = MKEY_HDRSIZE;
   return 0;
@@ -401,7 +428,6 @@ static int32_t op_list_keys(char *reqbuf, int reqlen, char *repbuf, int *replen)
   char *tagname;
   struct taginfo *tag;
   struct keyinfo *key;
-  krb5_context ctx;
 
   if (reqlen < MKEY_HDRSIZE + 1)
     return MKEY_ERR_REQ_FORMAT;
@@ -473,6 +499,7 @@ static int32_t op_list_tag(char *reqbuf, int reqlen, char *repbuf, int *replen)
 static int32_t op_shutdown(char *reqbuf, int reqlen, char *repbuf, int *replen)
 {
   *replen = MKEY_HDRSIZE;
+  syslog(LOG_INFO, "shutting down");
   return pthread_cond_signal(&exit_cv);
 }
 
@@ -528,6 +555,7 @@ static void mainloop(void)
     exit(1);
   }
 
+  unlink(MKEY_DOOR);
   doorfd = open(MKEY_DOOR, O_CREAT|O_RDWR, 0600);
   if (doorfd < 0) {
     syslog(LOG_ERR, "create %s: %s", MKEY_DOOR, strerror(errno));

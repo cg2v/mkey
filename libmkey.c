@@ -45,7 +45,7 @@
 static char req_buf[MKEY_MAXSIZE + 1];
 static char rep_buf[MKEY_MAXSIZE + 1];
 static MKey_Integer cookie = 0;
-static int mkeyd_sock;
+static int mkeyd_sock = -1;
 
 
 static void mkheader(MKey_Integer reqid)
@@ -267,7 +267,7 @@ MKey_Error mkey_list_keys(char *tag, MKey_Integer *nkeys, MKey_KeyInfo *keys)
   if (replen < MKEY_HDRSIZE + 4)
     return MKEY_ERR_REP_FORMAT;
   memcpy(&onkeys, repptr + MKEY_HDRSIZE, 4);
-  if (replen != MKEY_HDRSIZE + 4 + onkeys * 2)
+  if (replen != MKEY_HDRSIZE + 4 + onkeys * 8)
     return MKEY_ERR_REP_FORMAT;
   if (onkeys > *nkeys)
     return MKEY_ERR_OVERFLOW;
@@ -287,7 +287,7 @@ MKey_Error mkey_list_tag(MKey_Integer tagid, char *tag, int bufsize)
   char *repptr;
 
   reqlen = MKEY_HDRSIZE + 4;
-  if (reqlen > MKEY_HDRSIZE)
+  if (reqlen > MKEY_MAXSIZE)
     return MKEY_ERR_TOO_BIG;
 
   mkheader(MKEY_OP_LIST_TAG);

@@ -220,8 +220,10 @@ static void list_keys_for_tag(char *tag)
   }
   for (i = 0; i < nkeys; i++) {
     kerr = krb5_enctype_to_string(krb5ctx, keys[i].enctype, &etype);
-    printf("%-30s %4d %s", tag, keys[i].kvno,
-           kerr ? error_message(kerr) : etype);
+    if (kerr)
+      fprintf(stderr, "%-30s %4d %s\n", tag, keys[i].kvno, error_message(kerr));
+    else
+      printf("%-30s %4d %s\n", tag, keys[i].kvno, etype);
   }
 }
 
