@@ -130,6 +130,16 @@ static MKey_Error find_tag(char *name, struct taginfo **rtag, int create)
     err = pthread_rwlock_rdlock(&masterlock);
   if (err) return err;
 
+  /* short circuit the case where we have not been told any keys yet,
+   * and return a special error code.  This makes the KDC (only) drop
+   * the request on the floor instead of returning a "not found" error.
+   * That way, the client can try to find a KDC not in this state.
+   */
+  if (!taglist && !create) {
+    pthread_rwlock_unlock(&masterlock);
+    return MKEY_ERR_NO_KEYS;
+  }
+
   for (tag = taglist; tag; tag = tag->next)
     if (!strcmp(tag->name, name)) {
       *rtag = tag;
