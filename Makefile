@@ -5,7 +5,8 @@ DESTDIR = /dist/sw.smartcard.${SYS}
 CFLAGS = -I/usr/local/include ${DEBUG}
 LDFLAGS = -L/usr/local/lib -R /usr/local/lib ${DEBUG}
 
-PROGRAMS = setup_smartcard update_meta
+PROGRAMS = update_meta
+SCRIPTS = setup_smartcard
 
 all: ${PROGRAMS}
 
