@@ -365,6 +365,7 @@ static int do_list(int argc, char **argv)
       fprintf(stderr, "tag %d: %s\n", i, error_message(err));
       break;
     }
+    else list_keys_for_tag(tagbuf);
   }
 
   return 0;

@@ -1,2 +1,2 @@
 mkey_err.c mkey_err.h
-mkey mkeyd libmkey.so.0
+mkey mkrelay mkeyd libmkey.so.0
