@@ -247,6 +247,29 @@ MKey_Error mkey_remove_key(char *tag, MKey_Integer kvno)
 }
 
 
+MKey_Error mkey_verify_key(char *tag, MKey_Integer kvno)
+{
+  MKey_Error err;
+  int reqlen, replen;
+  char *repptr;
+
+  reqlen = MKEY_HDRSIZE + 4 + strlen(tag) + 1;
+  if (reqlen > MKEY_MAXSIZE)
+    return MKEY_ERR_TOO_BIG;
+
+  mkheader(MKEY_OP_VERIFY_KEY);
+  memcpy(req_buf + MKEY_HDRSIZE,     &kvno, 4);
+  strcpy(req_buf + MKEY_HDRSIZE + 4, tag);
+
+  err = do_request(reqlen, &replen, &repptr);
+  if (err) return err;
+
+  if (replen != MKEY_HDRSIZE)
+    return MKEY_ERR_REP_FORMAT;
+  return 0;
+}
+
+
 MKey_Error mkey_list_keys(char *tag, MKey_Integer *nkeys, MKey_KeyInfo *keys)
 {
   MKey_Error err;

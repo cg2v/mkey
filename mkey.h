@@ -34,6 +34,7 @@
 #define MKEY_OP_LIST_KEYS   4
 #define MKEY_OP_LIST_TAG    5
 #define MKEY_OP_SHUTDOWN    6
+#define MKEY_OP_VERIFY_KEY  7
 
 #ifdef USE_DOORS
 #define MKEY_DOOR           "/var/run/mkey_door"  /* socket filename */

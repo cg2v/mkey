@@ -203,6 +203,31 @@ static int do_remove(int argc, char **argv)
 }
 
 
+static int do_verify(int argc, char **argv)
+{
+  MKey_Error err;
+  long kvno;
+  char *x;
+
+  if (argc != 3 || !argv[1][0] || !argv[2][0]) {
+    fprintf(stderr, "usage: verify tag kvno\n");
+    return 0;
+  }
+  kvno = strtol(argv[2], &x, 10);
+  if (*x || kvno < 0 || kvno > 0x7fffffff) {
+    fprintf(stderr, "invalid kvno %s\n", argv[2]);
+    return 0;
+  }
+  err = mkey_verify_key(argv[1], kvno);
+  if (err) {
+    fprintf(stderr, "%s %d: %s\n", argv[1], kvno, error_message(err));
+  } else {
+    printf("%s %d: key removed\n", argv[1], kvno);
+  }
+  return 0;
+}
+
+
 static void list_keys_for_tag(char *tag)
 {
   MKey_Error err;
@@ -302,6 +327,10 @@ static SL_cmd commands[] = {
   {
     "remove",     do_remove,       "remove tag kvno",
     "Remove the key for the specified tag and kvno from the mkey server."
+  },
+  {
+    "verify",     do_verify,       "verify tag kvno",
+    "Verify that a key for the specified tag and kvno exists in the server."
   },
   {
     "list",       do_list,         "list [tag]",

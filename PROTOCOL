@@ -58,6 +58,7 @@ The following requests are supported:
    4  LIST_KEYS
    5  LIST_TAG
    6  SHUTDOWN
+   7  VERIFY_KEY
 
 
 ENCRYPT (0)
@@ -133,3 +134,12 @@ SHUTDOWN (6)
    -
 
    Shuts down the server.
+
+
+VERIFY_KEY (7)
+   Integer   kvno
+   String    tag
+   ========
+   -
+
+   Returns success iff the specified key exists.

@@ -51,6 +51,7 @@ static int32_t op_encrypt    (char *, int, char *, int *);
 static int32_t op_decrypt    (char *, int, char *, int *);
 static int32_t op_add_key    (char *, int, char *, int *);
 static int32_t op_remove_key (char *, int, char *, int *);
+static int32_t op_verify_key (char *, int, char *, int *);
 static int32_t op_list_keys  (char *, int, char *, int *);
 static int32_t op_list_tag   (char *, int, char *, int *);
 static int32_t op_shutdown   (char *, int, char *, int *);
@@ -63,6 +64,7 @@ static opfunc operations[] = {
   op_list_keys,  /* MKEY_OP_LIST_KEYS  */
   op_list_tag,   /* MKEY_OP_LIST_TAG   */
   op_shutdown,   /* MKEY_OP_SHUTDOWN   */
+  op_verify_key, /* MKEY_OP_VERIFY_KEY */
 };
 #define n_operations (sizeof(operations) / sizeof(operations[0]))
 
@@ -416,6 +418,43 @@ static int32_t op_remove_key(char *reqbuf, int reqlen, char *repbuf, int *replen
   /* end critical section */
 
   syslog(LOG_INFO, "removed key %s[%d]", tagname, kvno);
+
+  *replen = MKEY_HDRSIZE;
+  return 0;
+}
+
+
+static int32_t op_verify_key(char *reqbuf, int reqlen, char *repbuf, int *replen)
+{
+  int32_t kvno, err;
+  char *tagname;
+  struct taginfo *tag;
+  struct keyinfo *key;
+  krb5_context ctx;
+
+  if (reqlen < MKEY_HDRSIZE + 4 + 1)
+    return MKEY_ERR_REQ_FORMAT;
+  memcpy(&kvno, reqbuf + MKEY_HDRSIZE, 4);
+  tagname = reqbuf + MKEY_HDRSIZE + 4;
+  reqbuf[reqlen - 1] = 0;
+
+  err = find_tag(tagname, &tag, 0);
+  if (err) return err;
+  err = find_key(tag, kvno, &key, 0);
+  if (err) return err;
+
+  /* begin critical section */
+  err = pthread_mutex_lock(&key->mutex);
+  if (err) return err;
+
+  if (!key->enctype) {
+    pthread_mutex_unlock(&key->mutex);
+    return MKEY_ERR_NO_KEY;
+  }
+
+  err = pthread_mutex_unlock(&key->mutex);
+  if (err) return err;
+  /* end critical section */
 
   *replen = MKEY_HDRSIZE;
   return 0;
