@@ -68,3 +68,5 @@ extern MKey_Error mkey_load_keys(char *tag);
 extern MKey_Error mkey_shutdown(void);
 
 extern void mkey_set_socket_name(char *);
+extern int mkey_read_pw_string(char *buf, int length,
+                               const char *prompt, int verify);

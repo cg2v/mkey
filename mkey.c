@@ -36,7 +36,6 @@
 
 #include <com_err.h>
 #include <krb5.h>
-#include <des.h>
 #include <sl.h>
 
 #include "libmkey.h"
@@ -129,7 +128,7 @@ static int get_key(char *etypestr, char *saltstr, char *keystr, int randkey,
     salt.saltvalue.data = saltstr;
     salt.saltvalue.length = saltstr ? strlen(saltstr) : 0;
 
-    if (des_read_pw_string(buf, sizeof(buf), "Password: ", 1))
+    if (mkey_read_pw_string(buf, sizeof(buf), "Password: ", 1))
       return 1;
     err = krb5_string_to_key_salt(krb5ctx, *enctype, buf, salt, &keyblock);
     if (err) {

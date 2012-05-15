@@ -33,8 +33,6 @@ addwl   = -Wl,$(subst $(space),$(comma),$(1))
 stripwl = $(subst $(comma),$(space),$(patsubst -Wl$(comma)%,%,$(1)))
 CPRULE = test -d $(dir $@) || mkdir -p $(dir $@); cp $< $@
 
-DESLIB=-ldes
-
 _lib = lib
 OPTMZ = -g
 CPPFLAGS ?= -I/usr/cs/include
@@ -68,7 +66,7 @@ override CPPFLAGS := -I. -I$(srcdir) ${CPPFLAGS}
 SOVERS = 1
 SOBASE = libmkey
 SONAME = ${SOBASE}.so.${SOVERS}
-SOOBJS = libmkey.o mkeycode.o mkey_err.o
+SOOBJS = libmkey.o mkeycode.o mkey_err.o ui.o
 SOLIBS = ${RPCLIBS} -lcom_err ${SOCKLIBS}
 
 PROGRAMS = mkey mkrelay mkeyd
@@ -78,7 +76,7 @@ HEADERS = libmkey.h mkey_err.h
 all: ${PROGRAMS} ${SONAME} ${HEADERS}
 
 mkey: mkey.o ${SONAME}
-	${CC} ${LDFLAGS} -o $@ $^ -lkrb5 ${DESLIB} -lsl -lcom_err
+	${CC} ${LDFLAGS} -o $@ $^ -lkrb5 -lsl -lcom_err
 
 mkrelay: mkrelay.o ${SONAME}
 	${CC} ${LDFLAGS} -o $@ $^ -lcom_err ${SOCKLIBS}

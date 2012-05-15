@@ -39,7 +39,6 @@
 
 #include <com_err.h>
 #include <krb5.h>
-#include <des.h>
 #include <sl.h>
 
 #include "mkey_err.h"
