@@ -65,8 +65,11 @@ _lib = lib64
 endif
 endif
 
+VERSION := $(shell (cd $(psrcdir); git describe --dirty || git describe --dirty --tags || git describe --dirty --all || cat .version || echo unknown) 2>/dev/null)
+
 override CFLAGS += ${OPTMZ} ${WARNFLAGS}
 override CPPFLAGS := -I. -I$(srcdir) ${CPPFLAGS}
+override CPPFLAGS += -DMKEY_VERSION='"${VERSION}"'
 
 SOVERS = 1
 SOBASE = libmkey

@@ -1466,7 +1466,7 @@ int main(int argc, char **argv)
   if (argc > 2) keytab_dir = argv[2];
 
   openlog(argv0, LOG_PID, MKEY_FACILITY);
-  syslog(LOG_INFO, "mkeyd %s", "$Revision$");
+  syslog(LOG_INFO, "mkeyd %s", MKEY_VERSION);
   err = mlockall(MCL_CURRENT | MCL_FUTURE);
   if (err) {
     syslog(LOG_ERR, "mlockall: %s", strerror(errno));
