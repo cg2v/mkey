@@ -25,6 +25,10 @@
  * mkey.h - General definitions
  */
 
+#ifndef __GNUC__
+#define __attribute__(x)
+#endif
+
 /* protocol opcodes */
 #define MKEY_OP_ENCRYPT             0
 #define MKEY_OP_DECRYPT             1

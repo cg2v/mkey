@@ -25,6 +25,9 @@
  * libmkey.c - mkey library implementation
  */
 
+#define _XOPEN_SOURCE
+#define _XOPEN_SOURCE_EXTENDED 1 /* for strdup */
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -61,7 +64,7 @@ static int mkeyd_sock = -1;
 static int use_mkrelay = 0;
 
 
-static MKey_Integer getcookie()
+static MKey_Integer getcookie(void)
 {
   if (!global_cookie) {
     srand(time(0) ^ getpid());
@@ -425,7 +428,7 @@ MKey_Error mkey_list_tag(MKey_Integer tagid, char *tag, int bufsize)
   err = _mkey_decode(repptr, replen, 0, 0, 0, 0, 0, &tagout);
   if (err) return err;
 
-  if (!bufsize || strlen(tagout) > bufsize - 1)
+  if (!bufsize || strlen(tagout) > (unsigned int)bufsize - 1)
     return MKEY_ERR_OVERFLOW;
   strcpy(tag, tagout);
   return 0;
@@ -503,7 +506,7 @@ MKey_Error mkey_enctype_to_string(MKey_Integer enctype, char *name, int bufsize)
   err = _mkey_decode(repptr, replen, 0, 0, 0, 0, 0, &nameout);
   if (err) return err;
 
-  if (!bufsize || strlen(nameout) > bufsize - 1)
+  if (!bufsize || strlen(nameout) > (unsigned int)bufsize - 1)
     return MKEY_ERR_OVERFLOW;
   strcpy(name, nameout);
   return 0;
@@ -638,7 +641,7 @@ MKey_Error mkey_shutdown(void)
   MKey_Integer cookie;
   MKey_Error err;
   int reqlen, replen;
-  char *repptr, *tagout;
+  char *repptr;
 
   reqlen = MKEY_MAXSIZE;
   cookie = getcookie();

@@ -25,6 +25,7 @@
  * mkeycode.c - mkey protocol encoding
  */
 
+#include <arpa/inet.h>
 #include <string.h>
 
 #include "libmkey.h"
@@ -98,7 +99,7 @@ MKey_Error _mkey_decode(void *buf, int buflen,
                         MKey_DataBlock *data, char **string)
 {
   unsigned char *bytes = buf;
-  int pktlen, offset, i;
+  int offset, i;
   MKey_Integer datasize, keycount, netint;
 
   offset = 8; /* skip cookie and code */

@@ -110,7 +110,7 @@ static void client_loop(int csock)
 }
 
 
-static void usage() {
+static void usage(void) {
   fprintf(stderr, "Usage: mkrelay [-s sockname]\n");
   exit(1);
 }
@@ -120,7 +120,8 @@ int main(int argc, char **argv)
 {
   struct rlimit rl;
   struct sockaddr_in myaddr, hisaddr;
-  int lsock, csock, addrsize, one = 1;
+  int lsock, csock, one = 1;
+  socklen_t addrsize;
 
   if (argc > 1) {
     if (!strcmp(argv[1], "-h")) {

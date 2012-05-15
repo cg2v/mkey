@@ -48,6 +48,7 @@ SHLD = ld
 MTFLAGS = -mt
 RPCLIBS = -ldoor
 SOCKLIBS = -lsocket
+WARNFLAGS = -fd -v -errtags=yes -errwarn=%all
 endif
 
 ifeq ($(uname),Linux)
@@ -55,12 +56,16 @@ rpath = -R$(1)
 SHCCFLAGS = -fPIC
 SHLDFLAGS = -shared -Wl,-soname,${SONAME} ${LDFLAGS}
 SHLD = gcc
+WARNFLAGS = -ansi -std=c99 -pedantic -Wall -Werror -Wextra \
+            -Wmissing-prototypes -Wmissing-declarations -Wold-style-definition \
+            -Wpointer-arith -Wredundant-decls  -Wstrict-prototypes \
+            -Wshadow -Wundef -Wunreachable-code -Wno-unused-function
 ifeq ($(shell uname -p),x86_64)
 _lib = lib64
 endif
 endif
 
-override CFLAGS += ${OPTMZ}
+override CFLAGS += ${OPTMZ} ${WARNFLAGS}
 override CPPFLAGS := -I. -I$(srcdir) ${CPPFLAGS}
 
 SOVERS = 1
@@ -71,7 +76,6 @@ SOLIBS = ${RPCLIBS} -lcom_err ${SOCKLIBS}
 
 PROGRAMS = mkey mkrelay mkeyd
 HEADERS = libmkey.h mkey_err.h
-
 
 all: ${PROGRAMS} ${SONAME} ${HEADERS}
 

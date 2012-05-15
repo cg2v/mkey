@@ -31,6 +31,8 @@
  * SUCH DAMAGE.
  */
 
+#define _XOPEN_SOURCE /* for sigaction et al */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,11 +41,12 @@
 #include <fcntl.h>
 
 #include "libmkey.h"
+#include "mkey.h"
 
 static sig_atomic_t intr_flag;
 
 static void
-intr(int sig)
+intr(int __attribute__((__unused__)) sig)
 {
     intr_flag++;
 }
@@ -62,7 +65,7 @@ read_string(const char *preprompt, const char *prompt,
     FILE *tty;
     int ret = 0;
     int of = 0;
-    int i;
+    unsigned int i;
     int c;
     char *p;
 

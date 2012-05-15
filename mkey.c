@@ -40,11 +40,9 @@
 
 #include "libmkey.h"
 #include "mkey_err.h"
-
+#include "mkey.h"
 
 krb5_context krb5ctx;
-
-static SL_cmd commands[];
 
 
 static void print_key(void *data, int len)
@@ -449,7 +447,6 @@ static int do_str2k(int argc, char **argv)
 
 static int do_genkey(int argc, char **argv)
 {
-  MKey_Error err;
   MKey_DataBlock key;
   krb5_enctype enctype;
 
@@ -554,7 +551,7 @@ static int do_load(int argc, char **argv)
 }
 
 
-static int do_shutdown(int argc, char **argv)
+static int do_shutdown(int argc, char __attribute__((__unused__)) **argv)
 {
   MKey_Error err;
 
@@ -571,19 +568,14 @@ static int do_shutdown(int argc, char **argv)
 }
 
 
-static int do_help(int argc, char **argv)
-{
-  sl_help(commands, argc, argv);
-  return 0;
-}
-
-
-static int do_exit(int argc, char **argv)
+static int do_exit(int __attribute__((__unused__)) argc,
+                   char __attribute__((__unused__)) **argv)
 {
   return 1;
 }
 
 
+static int do_help(int argc, char **argv);
 static SL_cmd commands[] = {
   {
     "encrypt",    do_encrypt,    "encrypt tag kvno",
@@ -671,15 +663,22 @@ static SL_cmd commands[] = {
     "shutdown",   do_shutdown,   "shutdown",
     "Shut down the master key server."
   },
-  { "help",       do_help,       "help" },
-  { "?"},
-  { "exit",       do_exit,       "exit" },
-  { "quit" },
-  { NULL }
+  { "help",       do_help,       "help", NULL },
+  { "?",          NULL, NULL, NULL },
+  { "exit",       do_exit,       "exit", NULL },
+  { "quit",       NULL, NULL, NULL },
+  { NULL, NULL, NULL, NULL  }
 };
 
 
-void usage() {
+static int do_help(int argc, char **argv)
+{
+  sl_help(commands, argc, argv);
+  return 0;
+}
+
+
+static void usage(void) {
   fprintf(stderr, "Usage: mkey [-s sockname] command [args...]\n");
   exit(1);
 }

@@ -478,7 +478,6 @@ static MKey_Error op_verify_key(MKey_Integer cookie, char *reqbuf, int reqlen,
   char *tagname;
   struct taginfo *tag;
   struct keyinfo *key;
-  krb5_context ctx;
 
   err = _mkey_decode(reqbuf, reqlen, 1, &kvno, 0, 0, 0, &tagname);
   if (err) return err;
@@ -583,7 +582,9 @@ static MKey_Error op_list_tag(MKey_Integer cookie, char *reqbuf, int reqlen,
 }
 
 
-static MKey_Error op_shutdown(MKey_Integer cookie, char *reqbuf, int reqlen,
+static MKey_Error op_shutdown(MKey_Integer cookie,
+                              char __attribute__((__unused__)) *reqbuf,
+                              int __attribute__((__unused__)) reqlen,
                               char *repbuf, int *replen)
 {
   MKey_Error err;
@@ -630,7 +631,6 @@ static MKey_Error op_get_metakey_info(MKey_Integer cookie,
   MKey_Error err;
   char *tagname;
   struct taginfo *tag;
-  int i, count;
 
   err = _mkey_decode(reqbuf, reqlen, 0, 0, 0, 0, 0, &tagname);
   if (err) return err;
@@ -658,7 +658,7 @@ static MKey_Error op_unseal_keys(MKey_Integer cookie, char *reqbuf, int reqlen,
                                  char *repbuf, int *replen)
 {
   MKey_Integer enctype;
-  MKey_Error err, cerr;
+  MKey_Error err;
   MKey_DataBlock keydata;
   char *tagname;
   struct taginfo *tag;
@@ -1382,7 +1382,7 @@ static void proc_request(char *reqbuf, int reqlen, char *repbuf, int *replen)
   err = _mkey_decode_header(reqbuf, reqlen, &cookie, &reqid);
   if (err) goto fail;
 
-  if (reqid < 0 || reqid > n_operations - 1 || !operations[reqid])
+  if (reqid < 0 || (unsigned int)reqid > n_operations - 1 || !operations[reqid])
     err = MKEY_ERR_UNKNOWN_REQ;
   else
     err = (operations[reqid])(cookie, reqbuf, reqlen, repbuf, replen);
