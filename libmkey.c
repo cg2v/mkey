@@ -38,6 +38,7 @@
 #include <time.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <sys/un.h>
 #ifdef USE_DOORS
 #include <door.h>
 #endif
@@ -230,7 +231,39 @@ MKey_Error _mkey_do_request(MKey_Integer cookie, char *reqBUF, int reqlen,
       *repptr = arg.data_ptr;
       *replen = arg.data_size;
 #else /* !USE_DOORS */
-      return MKEY_ERR_NO_DIRECT;
+
+      if (mkeyd_sock < 0) {
+        struct sockaddr_un server;
+        unsigned int socklen = strlen(sock_name) + 1;
+
+        if (socklen > sizeof(server.sun_path))
+          return ENAMETOOLONG;
+
+        memset(&server, 0, sizeof(server));
+        server.sun_family = AF_UNIX;
+        strcpy(server.sun_path, sock_name);
+        socklen += sizeof(server) - sizeof(server.sun_path);
+
+        mkeyd_sock = socket(PF_UNIX, SOCK_STREAM, 0);
+        if (mkeyd_sock < 0) return errno;
+        if (connect(mkeyd_sock, (struct sockaddr *)&server, socklen)) {
+          xerrno = errno;
+          close(mkeyd_sock);
+          mkeyd_sock = -1;
+          return xerrno;
+        }
+      }
+
+      switch (_mkey_do_stream_req(reqBUF, reqlen, repBUF, replen, repptr)) {
+        // These three are a sequence...
+        case STREAM_REQ_BIG:  lasterr = MKEY_ERR_TOO_BIG;
+        case STREAM_REQ_EOF:  try++;
+        case STREAM_REQ_INTR: continue;
+
+        case STREAM_REQ_OK:   break;
+        case STREAM_REQ_ERR:  return errno;
+        default:              return EIO;       // should never happen
+      }
 #endif /* USE_DOORS */
     }
 
