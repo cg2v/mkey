@@ -70,28 +70,8 @@ SOLIBS = ${RPCLIBS} -lcom_err ${SOCKLIBS}
 PROGRAMS = mkey mkrelay mkeyd
 HEADERS = libmkey.h mkey_err.h
 
+
 all: ${PROGRAMS} ${SONAME} ${HEADERS}
-
-clean:
-	-rm -f ${PROGRAMS} ${SONAME} ${SOBASE}.so *.o mkey_err.c mkey_err.h
-
-install: ${DESTDIR}/bin/mkey \
-         ${DESTDIR}/libexec/mkeyd \
-         ${DESTDIR}/${_lib}/${SONAME} \
-         ${HEADERS:%=${DESTDIR}/include/%}
-
-${DESTDIR}/bin/mkey          : mkey          ; ${CPRULE}
-${DESTDIR}/bin/mkrelay       : mkrelay       ; ${CPRULE}
-${DESTDIR}/libexec/mkeyd     : mkeyd         ; ${CPRULE}
-${DESTDIR}/${_lib}/${SONAME} : ${SONAME}
-	${CPRULE}
-	-rm -f ${DESTDIR}/${_lib}/${SOBASE}.so
-	ln -s ${SONAME} ${DESTDIR}/${_lib}/${SOBASE}.so
-
-${DESTDIR}/include/% : % ; ${CPRULE}
-
-mkey_err.c mkey_err.h: mkey_err.et
-	compile_et $<
 
 mkey: mkey.o ${SONAME}
 	${CC} ${LDFLAGS} -o $@ $^ -lkrb5 ${DESLIB} -lsl -lcom_err
@@ -109,14 +89,38 @@ ${SONAME}: ${SOOBJS}
 	-rm -f ${SOBASE}.so
 	ln -sf ${SONAME} ${SOBASE}.so
 
-mkeyd.o: mkeyd.c
-	${CC} ${MTFLAGS} ${CFLAGS} ${CPPFLAGS} -c -o $@ $<
+
+clean:
+	-rm -f ${PROGRAMS} ${SONAME} ${SOBASE}.so *.o mkey_err.c mkey_err.h
+
+
+install: ${DESTDIR}/bin/mkey
+install: ${DESTDIR}/libexec/mkeyd
+install: ${DESTDIR}/${_lib}/${SONAME}
+install: ${HEADERS:%=${DESTDIR}/include/%}
+
+${DESTDIR}/bin/mkey          : mkey          ; ${CPRULE}
+${DESTDIR}/bin/mkrelay       : mkrelay       ; ${CPRULE}
+${DESTDIR}/libexec/mkeyd     : mkeyd         ; ${CPRULE}
+${DESTDIR}/include/%         : %             ; ${CPRULE}
+
+${DESTDIR}/${_lib}/${SONAME} : ${SONAME}
+	${CPRULE}
+	-rm -f ${DESTDIR}/${_lib}/${SOBASE}.so
+	ln -s ${SONAME} ${DESTDIR}/${_lib}/${SOBASE}.so
+
+
+mkey_err.c mkey_err.h: mkey_err.et
+	compile_et $<
 
 %.o : %.c
 	${CC} -c ${CFLAGS} ${CPPFLAGS} -o $@ $<
 
 ${SOOBJS}: %.o : %.c
 	${CC} -c ${SHCCFLAGS} ${CFLAGS} ${CPPFLAGS} -o $@ $<
+
+mkeyd.o: mkeyd.c
+	${CC} -c ${MTFLAGS} ${CFLAGS} ${CPPFLAGS} -o $@ $<
 
 libmkey.o mkeycode.o mkeyd.o: mkey.h libmkey.h mkey_err.h
 mkrelay.o mkey.o : libmkey.h mkey_err.h
