@@ -74,15 +74,89 @@ static MKey_Integer getcookie(void)
   return global_cookie;
 }
 
+#define STREAM_REQ_BIG  -4  // received length too big; try again
+#define STREAM_REQ_INTR -3  // got EINTR; try again
+#define STREAM_REQ_ERR  -2  // generic error; see errno
+#define STREAM_REQ_EOF  -1  // stream closed; try again
+#define STREAM_REQ_OK    0  // OK to process request
+
+static int _mkey_do_stream_req(char *reqBUF, int reqlen,
+                               char *repBUF, int *replen, char **repptr)
+{
+  MKey_Integer pktsize;
+  int n;
+
+  /* Send off our request */
+  pktsize = htonl(reqlen);
+  n = send(mkeyd_sock, &pktsize, sizeof(pktsize), SEND_FLAGS);
+  if (n < 0 && errno == EINTR) return STREAM_REQ_INTR;
+  if (n == sizeof(pktsize)) {
+    for (;;) {
+      n = send(mkeyd_sock, reqBUF, reqlen, SEND_FLAGS);
+      if (n >= 0 || errno != EINTR) break;
+    }
+  }
+  else if (n >= 0) n = errno = -1;
+  if (n != reqlen) {
+    switch (errno) {
+      default:
+        return STREAM_REQ_ERR;
+      case -1:
+      case EPIPE:
+      case EBADF:
+      case EAGAIN:
+        close(mkeyd_sock);
+        mkeyd_sock = -1;
+        return STREAM_REQ_EOF;
+    }
+  }
+
+  pktsize = 1;
+  for (;;) {
+    n = recv(mkeyd_sock, &pktsize, sizeof(pktsize), RECV_FLAGS);
+    if (n >= 0 || errno != EINTR) break;
+  }
+  if (n == sizeof(pktsize)) {
+    pktsize = ntohl(pktsize);
+    if (pktsize > MKEY_MAXSIZE) {
+      /* overflow; try again */
+      close(mkeyd_sock);
+      mkeyd_sock = -1;
+      return STREAM_REQ_BIG;
+    }
+    for (;;) {
+      n = recv(mkeyd_sock, repBUF, pktsize, RECV_FLAGS);
+      if (n >= 0 || errno != EINTR) break;
+    }
+  } else if (n >= 0) n = errno = -1;
+
+  if (n != pktsize) {
+    switch (errno) {
+      default:
+        return STREAM_REQ_ERR;
+      case -1:
+      case EPIPE:
+      case EBADF:
+      case EAGAIN:
+        close(mkeyd_sock);
+        mkeyd_sock = -1;
+        return STREAM_REQ_EOF;
+    }
+  }
+  *repptr = repBUF;
+  *replen = pktsize;
+  return STREAM_REQ_OK;
+}
+
 MKey_Error _mkey_do_request(MKey_Integer cookie, char *reqBUF, int reqlen,
                             char *repBUF, int *replen, char **repptr)
 {
-  MKey_Integer rcookie, pktsize;
+  MKey_Integer rcookie;
   MKey_Error err, errcode, lasterr;
 #ifdef USE_DOORS
   door_arg_t arg;
 #endif
-  int try, xerrno, n, port;
+  int try, xerrno, port;
   char *sock_name;
   struct sockaddr_in relay;
 
@@ -110,66 +184,17 @@ MKey_Error _mkey_do_request(MKey_Integer cookie, char *reqBUF, int reqlen,
         }
       }
 
-      /* Send off our request */
-      pktsize = htonl(reqlen);
-      n = send(mkeyd_sock, &pktsize, sizeof(pktsize), SEND_FLAGS);
-      if (n < 0 && errno == EINTR) continue;
-      if (n == sizeof(pktsize)) {
-        for (;;) {
-          n = send(mkeyd_sock, reqBUF, reqlen, SEND_FLAGS);
-          if (n >= 0 || errno != EINTR) break;
-        }
-      }
-      else if (n >= 0) n = errno = -1;
-      if (n != reqlen) {
-        switch (errno) {
-          default:        return errno;
-          case -1:
-          case EPIPE:
-          case EBADF:
-          case EAGAIN:
-            try++;
-            close(mkeyd_sock);
-            mkeyd_sock = -1;
-            continue;
-        }
+      switch (_mkey_do_stream_req(reqBUF, reqlen, repBUF, replen, repptr)) {
+        // These three are a sequence...
+        case STREAM_REQ_BIG:  lasterr = MKEY_ERR_TOO_BIG;
+        case STREAM_REQ_EOF:  try++;
+        case STREAM_REQ_INTR: continue;
+
+        case STREAM_REQ_OK:   break;
+        case STREAM_REQ_ERR:  return errno;
+        default:              return EIO;       // should never happen
       }
 
-      pktsize = 1;
-      for (;;) {
-        n = recv(mkeyd_sock, &pktsize, sizeof(pktsize), RECV_FLAGS);
-        if (n >= 0 || errno != EINTR) break;
-      }
-      if (n == sizeof(pktsize)) {
-        pktsize = ntohl(pktsize);
-        if (pktsize > MKEY_MAXSIZE) {
-          /* overflow; try again */
-          lasterr = MKEY_ERR_TOO_BIG;
-          try++;
-          close(mkeyd_sock);
-          mkeyd_sock = -1;
-          continue;
-        }
-        for (;;) {
-          n = recv(mkeyd_sock, repBUF, pktsize, RECV_FLAGS);
-          if (n >= 0 || errno != EINTR) break;
-        }
-      } else if (n >= 0) n = errno = -1;
-      if (n != pktsize) {
-        switch (errno) {
-          default:        return errno;
-          case -1:
-          case EPIPE:
-          case EBADF:
-          case EAGAIN:
-            try++;
-            close(mkeyd_sock);
-            mkeyd_sock = -1;
-            continue;
-        }
-      }
-      *repptr = repBUF;
-      *replen = pktsize;
     } else {
 #ifdef USE_DOORS
       if (mkeyd_sock < 0) {
