@@ -56,6 +56,7 @@ rpath = -R$(1)
 SHCCFLAGS = -fPIC
 SHLDFLAGS = -shared -Wl,-soname,${SONAME} ${LDFLAGS}
 SHLD = gcc
+MTFLAGS = -pthread
 WARNFLAGS = -ansi -std=c99 -pedantic -Wall -Werror -Wextra \
             -Wmissing-prototypes -Wmissing-declarations -Wold-style-definition \
             -Wpointer-arith -Wredundant-decls  -Wstrict-prototypes \
@@ -126,7 +127,7 @@ mkey_err.c mkey_err.h: mkey_err.et
 	${CC} -c ${CFLAGS} ${CPPFLAGS} -o $@ $<
 
 ${SOOBJS}: %.o : %.c
-	${CC} -c ${SHCCFLAGS} ${CFLAGS} ${CPPFLAGS} -o $@ $<
+	${CC} -c ${MTFLAGS} ${SHCCFLAGS} ${CFLAGS} ${CPPFLAGS} -o $@ $<
 
 mkeyd.o: mkeyd.c
 	${CC} -c ${MTFLAGS} ${CFLAGS} ${CPPFLAGS} -o $@ $<
