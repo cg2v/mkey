@@ -51,6 +51,7 @@
 #define MKEY_MSTATE_SEALED          2  /* sealed keys */
 #define MKEY_MSTATE_LOADING         3  /* loading data */
 
+#define MKEY_DB_DIR         "/var/heimdal"
 #ifdef USE_DOORS
 #define MKEY_SOCKET         "/var/run/mkey_door"  /* socket filename */
 #else

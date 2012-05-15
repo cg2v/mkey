@@ -118,7 +118,7 @@ struct taginfo {
   krb5_data challenge;
 };
 
-static char *keytab_dir = HDB_DB_DIR;
+static char *keytab_dir = MKEY_DB_DIR;
 static char *sock_name = MKEY_SOCKET;
 static struct taginfo *taglist;
 static int max_slot;
