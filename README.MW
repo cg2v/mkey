@@ -1,6 +1,0 @@
-# MiniWorld README for smartcard
-
-Dependencies: gmake openssl opensc mkey
-Build:        gmake all install
-
-This collection contains various smartcard-related tools.
