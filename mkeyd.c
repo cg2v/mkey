@@ -31,6 +31,7 @@
 #include <sys/types.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
+#include <sys/select.h>
 #include <sys/mman.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -40,6 +41,8 @@
 #include <fcntl.h>
 #include <stropts.h>
 #include <pthread.h>
+#include <arpa/inet.h>
+#include <sys/un.h>
 #ifdef USE_DOORS
 #include <door.h>
 #endif
@@ -52,6 +55,14 @@
 #include "libmkey.h"
 #include "mkey_err.h"
 #include "mkey.h"
+
+#ifdef MSG_NOSIGNAL
+#define SEND_FLAGS (MSG_DONTWAIT|MSG_NOSIGNAL)
+#define RECV_FLAGS (MSG_WAITALL|MSG_NOSIGNAL)
+#else
+#define SEND_FLAGS 0
+#define RECV_FLAGS 0
+#endif
 
 #define MAX_LIST_KEYS 512
 
@@ -125,8 +136,12 @@ static int max_slot;
 static pthread_rwlock_t masterlock;
 static pthread_key_t contextkey;
 
+#ifdef USE_DOORS
 static pthread_mutex_t exit_mutex;
 static pthread_cond_t exit_cv;
+#else
+static int exit_pipe[2];
+#endif
 
 
 static MKey_Error context_setup(krb5_context *ctx)
@@ -587,11 +602,16 @@ static MKey_Error op_shutdown(MKey_Integer cookie,
                               int __attribute__((__unused__)) reqlen,
                               char *repbuf, int *replen)
 {
-  MKey_Error err;
+  MKey_Error err = 0;
 
   syslog(LOG_INFO, "shutting down");
+#ifdef USE_DOORS
   err = pthread_cond_signal(&exit_cv);
   if (err) return err;
+#else
+  if (write(exit_pipe[1], &err, 1) != 1)
+    return errno;
+#endif
 
   return _mkey_encode(repbuf, replen, cookie, 0, 0, 0, 0, 0);
 }
@@ -1444,10 +1464,151 @@ static void mainloop(void)
 
 #else /* !USE_DOORS */
 
+static int wait_for_fd(int fd) {
+  fd_set rfds;
+
+  for (;;) {
+    FD_ZERO(&rfds);
+    FD_SET(fd, &rfds);
+    FD_SET(exit_pipe[0], &rfds);
+
+    if (select(FD_SETSIZE, &rfds, NULL, NULL, NULL) < 0) {
+      if (errno == EINTR) continue;
+      syslog(LOG_ERR, "select: %s", strerror(errno));
+      return 1;
+    }
+
+    if (FD_ISSET(exit_pipe[0], &rfds))
+      return 1;
+
+    if (FD_ISSET(fd, &rfds))
+      return 0;
+  }
+}
+
+static void *client_loop(void *arg)
+{
+  MKey_Integer pktsize, code;
+  int n, replen, csock;
+  char *req_buf, *rep_buf;
+
+  csock = *(int *)arg;
+  free(arg);
+
+  req_buf = malloc(MKEY_MAXSIZE + 1);
+  rep_buf = malloc(MKEY_MAXSIZE + 1);
+  if (!req_buf || !rep_buf) goto out;
+
+  for (;;) {
+    pktsize = 1;
+    if (wait_for_fd(csock)) break;
+    n = recv(csock, &pktsize, sizeof(pktsize), RECV_FLAGS);
+    if (n < 0 && errno == EINTR) continue;
+    if (n == sizeof(pktsize)) {
+      pktsize = ntohl(pktsize);
+      if (pktsize > MKEY_MAXSIZE) {
+        code = htonl(MKEY_ERR_TOO_BIG);
+        send(csock, &code, sizeof(code), SEND_FLAGS);
+        break;
+      }
+      for (;;) {
+        if (wait_for_fd(csock)) goto out;
+        n = recv(csock, req_buf, pktsize, RECV_FLAGS);
+        if (n >= 0 || errno != EINTR) break;
+      }
+    } else if (n >= 0) n = errno = -1;
+    if (n != pktsize) break;
+
+    proc_request(req_buf, pktsize, rep_buf, &replen);
+
+    pktsize = htonl(replen);
+    for (;;) {
+      n = send(csock, &pktsize, sizeof(pktsize), SEND_FLAGS);
+      if (n >= 0 || errno != EINTR) break;
+    }
+    if (n == sizeof(pktsize)) {
+      for (;;) {
+        n = send(csock, rep_buf, replen, SEND_FLAGS);
+        if (n >= 0 || errno != EINTR) break;
+      }
+    } else if (n >= 0) n = errno = -1;
+    if (n != replen) break;
+  }
+
+out:
+  close(csock);
+  if (req_buf) free(req_buf);
+  if (rep_buf) free(rep_buf);
+  return 0;
+}
+
 static void mainloop(void)
 {
-  syslog(LOG_ERR, "write some code!");
-  exit(1);
+  struct sockaddr_un myaddr;
+  int err, lsock, csock, *csockp;
+  socklen_t addrsize = strlen(sock_name) + 1;
+  pthread_t client_thr;
+
+  if (addrsize > sizeof(myaddr.sun_path)) {
+    syslog(LOG_ERR, "%s: socket filename too long\n", sock_name);
+    exit(1);
+  }
+
+  lsock = socket(PF_UNIX, SOCK_STREAM, 0);
+  if (lsock < 0) {
+    syslog(LOG_ERR, "socket: %s", strerror(errno));
+    exit(1);
+  }
+
+  unlink(sock_name);
+  memset(&myaddr, 0, sizeof(myaddr));
+  myaddr.sun_family = AF_UNIX;
+  strcpy(myaddr.sun_path, sock_name);
+  addrsize += sizeof(myaddr) - sizeof(myaddr.sun_path);
+  if (bind(lsock, (struct sockaddr *)&myaddr, addrsize)) {
+    syslog(LOG_ERR, "bind: %s", strerror(errno));
+    exit(1);
+  }
+
+  if (listen(lsock, 1)) {
+    syslog(LOG_ERR, "listen: %s", strerror(errno));
+    exit(1);
+  }
+
+  for (;;) {
+    if (wait_for_fd(lsock)) break;
+    csock = accept(lsock, NULL, NULL);
+    if (csock < 0) {
+      switch (errno) {
+        case EINTR:
+        case EAGAIN:
+        case EPROTO:
+        case ENOPROTOOPT:
+        case EOPNOTSUPP:
+        case EHOSTDOWN:
+        case EHOSTUNREACH:
+        case ENONET:
+        case ENETDOWN:
+        case ENETUNREACH:
+          continue;
+        default:
+          syslog(LOG_ERR, "accept: %s", strerror(errno));
+          exit(1);
+      }
+    }
+    if (!(csockp = malloc(sizeof(*csockp)))) {
+      syslog(LOG_ERR, "out of memory accepting client connection");
+      close(csock);
+      continue;
+    }
+
+    *csockp = csock;
+    if ((err = pthread_create(&client_thr, NULL, client_loop, csockp))) {
+      syslog(LOG_ERR, "pthread_create: %s", strerror(err));
+      free(csockp);
+      close(csock);
+    }
+  }
 }
 
 #endif /* USE_DOORS */
@@ -1488,6 +1649,7 @@ int main(int argc, char **argv)
     syslog(LOG_ERR, "context key init failed: %s", strerror(err));
     exit(1);
   }
+#ifdef USE_DOORS
   err = pthread_mutex_init(&exit_mutex, 0);
   if (err) {
     syslog(LOG_ERR, "exit mutex init failed: %s", strerror(err));
@@ -1498,6 +1660,12 @@ int main(int argc, char **argv)
     syslog(LOG_ERR, "exit CV init failed: %s", strerror(err));
     exit(1);
   }
+#else
+  if (pipe(exit_pipe)) {
+    syslog(LOG_ERR, "exit pipe init failed: %s", strerror(errno));
+    exit(1);
+  }
+#endif
 
   mainloop();
 }
