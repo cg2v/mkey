@@ -23,6 +23,11 @@
 # the rights to redistribute these changes.
 
 uname := $(shell uname)
+empty :=
+space := $(empty) $(empty)
+comma := ,
+addwl   = -Wl,$(subst $(space),$(comma),$(1))
+stripwl = $(subst $(comma),$(space),$(patsubst -Wl$(comma)%,%,$(1)))
 CPRULE = test -d $(dir $@) || mkdir -p $(dir $@); cp $< $@
 
 DESLIB=-ldes
@@ -30,21 +35,25 @@ DESLIB=-ldes
 _lib = lib
 OPTMZ = -g
 CPPFLAGS ?= -I/usr/cs/include
+LDFLAGS ?= -L/usr/cs/${_lib} $(call addwl,$(call rpath,/usr/cs/${_lib}))
+override LDFLAGS += $(filter -g,${OPTMZ})
 
 ifeq ($(uname),SunOS)
 override CPPFLAGS += -DUSE_DOORS
-LDFLAGS = -L/usr/cs/${_lib} -R /usr/cs/${_lib} ${OPTMZ}
-SHLDFLAGS = -L/usr/cs/${_lib} -R /usr/cs/${_lib} -G $(filter -g,$(OPTMZ))
+rpath = -rpath $(1)
+SHCCFLAGS = -KPIC
+SHLDFLAGS = -G -h ${SONAME} $(call stripwl,${LDFLAGS})
+SHLD = ld
 MTFLAGS = -mt
 RPCLIBS = -ldoor
 SOCKLIBS = -lsocket
-PICFLAGS=-KPIC
 endif
 
 ifeq ($(uname),Linux)
-LDFLAGS = -L/usr/cs/${_lib} -Wl,-rpath,/usr/cs/${_lib} ${OPTMZ}
-SHLDFLAGS = -L/usr/cs/${_lib} -rpath /usr/cs/${_lib} -shared -x ${OPTMZ}
-PICFLAGS=-fPIC
+rpath = -R$(1)
+SHCCFLAGS = -fPIC
+SHLDFLAGS = -shared -Wl,-soname,${SONAME} ${LDFLAGS}
+SHLD = gcc
 ifeq ($(shell uname -p),x86_64)
 _lib = lib64
 endif
@@ -52,62 +61,62 @@ endif
 
 override CFLAGS += ${OPTMZ}
 
-V=1
+SOVERS = 1
+SOBASE = libmkey
+SONAME = ${SOBASE}.so.${SOVERS}
+SOOBJS = libmkey.o mkeycode.o mkey_err.o
+SOLIBS = ${RPCLIBS} -lcom_err ${SOCKLIBS}
 
 PROGRAMS = mkey mkrelay mkeyd
-LIBRARIES = libmkey.so.$V
 HEADERS = libmkey.h mkey_err.h
 
-all: ${PROGRAMS} ${LIBRARIES} ${HEADERS}
+all: ${PROGRAMS} ${SONAME} ${HEADERS}
 
 clean:
-	-rm -f ${PROGRAMS} ${LIBRARIES} *.o mkey_err.c mkey_err.h
+	-rm -f ${PROGRAMS} ${SONAME} ${SOBASE}.so *.o mkey_err.c mkey_err.h
 
 install: ${DESTDIR}/bin/mkey \
          ${DESTDIR}/libexec/mkeyd \
-         ${DESTDIR}/${_lib}/libmkey.so.$V \
+         ${DESTDIR}/${_lib}/${SONAME} \
          ${HEADERS:%=${DESTDIR}/include/%}
 
 ${DESTDIR}/bin/mkey          : mkey          ; ${CPRULE}
 ${DESTDIR}/bin/mkrelay       : mkrelay       ; ${CPRULE}
 ${DESTDIR}/libexec/mkeyd     : mkeyd         ; ${CPRULE}
-${DESTDIR}/${_lib}/libmkey.so.$V : libmkey.so.$V
+${DESTDIR}/${_lib}/${SONAME} : ${SONAME}
 	${CPRULE}
-	-rm -f ${DESTDIR}/${_lib}/libmkey.so
-	ln -s libmkey.so.$V ${DESTDIR}/${_lib}/libmkey.so
+	-rm -f ${DESTDIR}/${_lib}/${SOBASE}.so
+	ln -s ${SONAME} ${DESTDIR}/${_lib}/${SOBASE}.so
 
 ${DESTDIR}/include/% : % ; ${CPRULE}
-
-
-libmkey.so.$V: libmkey.o mkeycode.o mkey_err.o
-	${LD} ${SHLDFLAGS} -h $@ -o $@ $^ ${RPCLIBS} -lcom_err ${SOCKLIBS}
-
-libmkey.o: libmkey.c
-	${CC} ${CFLAGS} ${CPPFLAGS} ${PICFLAGS} -c -o $@ $<
-
-mkeycode.o: mkeycode.c
-	${CC} ${CFLAGS} ${CPPFLAGS} ${PICFLAGS} -c -o $@ $<
-
-mkey_err.o: mkey_err.c
-	${CC} ${CFLAGS} ${CPPFLAGS} ${PICFLAGS} -c -o $@ $<
 
 mkey_err.c mkey_err.h: mkey_err.et
 	compile_et $<
 
-mkey: mkey.o libmkey.so.$V
+mkey: mkey.o ${SONAME}
 	${CC} ${LDFLAGS} -o $@ $^ -lkrb5 ${DESLIB} -lsl -lcom_err
 
-mkrelay: mkrelay.o libmkey.so.$V
+mkrelay: mkrelay.o ${SONAME}
 	${CC} ${LDFLAGS} -o $@ $^ -lcom_err ${SOCKLIBS}
 
-mkeyd: mkeyd.o libmkey.so.$V
+mkeyd: mkeyd.o ${SONAME}
 	${CC} ${MTFLAGS} ${LDFLAGS} -o $@ $^ ${RPCLIBS} -lpthread -lkrb5
+
+${SONAME}: ${SOOBJS}
+	${SHLD} ${SHLDFLAGS} -o ${SONAME}.new ${SOOBJS} ${SOLIBS}
+	-rm -f ${SONAME}
+	mv ${SONAME}.new ${SONAME}
+	-rm -f ${SOBASE}.so
+	ln -sf ${SONAME} ${SOBASE}.so
 
 mkeyd.o: mkeyd.c
 	${CC} ${MTFLAGS} ${CFLAGS} ${CPPFLAGS} -c -o $@ $<
 
 %.o : %.c
 	${CC} -c ${CFLAGS} ${CPPFLAGS} -o $@ $<
+
+${SOOBJS}: %.o : %.c
+	${CC} -c ${SHCCFLAGS} ${CFLAGS} ${CPPFLAGS} -o $@ $<
 
 libmkey.o mkeycode.o mkeyd.o: mkey.h libmkey.h mkey_err.h
 mkrelay.o mkey.o : libmkey.h mkey_err.h
