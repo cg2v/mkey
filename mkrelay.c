@@ -157,7 +157,7 @@ int main(int argc, char **argv)
   myaddr.sin_family = AF_INET;
   myaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   myaddr.sin_port = htons(MKEY_RELAY_PORT);
-  if (bind(lsock, &myaddr, sizeof(myaddr))) {
+  if (bind(lsock, (struct sockaddr *)&myaddr, sizeof(myaddr))) {
     fprintf(stderr, "bind: %s\n", strerror(errno));
     exit(1);
   }
@@ -170,7 +170,7 @@ int main(int argc, char **argv)
   for (;;) {
     memset(&hisaddr, 0, sizeof(hisaddr));
     addrsize = sizeof(hisaddr);
-    csock = accept(lsock, &hisaddr, &addrsize);
+    csock = accept(lsock, (struct sockaddr *)&hisaddr, &addrsize);
     if (csock < 0) {
       switch (errno) {
         case EINTR:

@@ -99,7 +99,7 @@ MKey_Error _mkey_do_request(MKey_Integer cookie, char *reqBUF, int reqlen,
         relay.sin_family = AF_INET;
         relay.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         relay.sin_port = htons(port);
-        if (connect(mkeyd_sock, &relay, sizeof(relay))) {
+        if (connect(mkeyd_sock, (struct sockaddr *)&relay, sizeof(relay))) {
           xerrno = errno;
           close(mkeyd_sock);
           mkeyd_sock = -1;

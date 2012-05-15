@@ -179,7 +179,7 @@ static int encrypt_decrypt(int argc, char **argv, int mode)
   else
     err = mkey_decrypt(argv[1], kvno, &in_text, &out_text);
   if (err) {
-    fprintf(stderr, "%s %d: %s\n", argv[1], kvno, error_message(err));
+    fprintf(stderr, "%s %ld: %s\n", argv[1], kvno, error_message(err));
   } else {
     write(1, buf, out_text.size);
   }
@@ -251,12 +251,12 @@ static int key_entry_cmd(int argc, char **argv, int mode, char *okmsg)
 
   if (err) {
     if (mode > 0)
-      fprintf(stderr, "%s %d: %s\n", tag, kvno, error_message(err));
+      fprintf(stderr, "%s %ld: %s\n", tag, kvno, error_message(err));
     else
       fprintf(stderr, "%s: %s\n", tag, error_message(err));
   } else if (okmsg) {
     if (mode > 0)
-      printf("%s %d: %s\n", tag, kvno, okmsg);
+      printf("%s %ld: %s\n", tag, kvno, okmsg);
     else
       printf("%s: %s\n", tag, okmsg);
   }
@@ -286,9 +286,9 @@ static int do_remove(int argc, char **argv)
   }
   err = mkey_remove_key(argv[1], kvno);
   if (err) {
-    fprintf(stderr, "%s %d: %s\n", argv[1], kvno, error_message(err));
+    fprintf(stderr, "%s %ld: %s\n", argv[1], kvno, error_message(err));
   } else {
-    printf("%s %d: key removed\n", argv[1], kvno);
+    printf("%s %ld: key removed\n", argv[1], kvno);
   }
   return 0;
 }
@@ -311,9 +311,9 @@ static int do_verify(int argc, char **argv)
   }
   err = mkey_verify_key(argv[1], kvno);
   if (err) {
-    fprintf(stderr, "%s %d: %s\n", argv[1], kvno, error_message(err));
+    fprintf(stderr, "%s %ld: %s\n", argv[1], kvno, error_message(err));
   } else {
-    printf("%s %d: key exists\n", argv[1], kvno);
+    printf("%s %ld: key exists\n", argv[1], kvno);
   }
   return 0;
 }
@@ -392,7 +392,7 @@ static int do_e2str(int argc, char **argv)
   if (err) {
     fprintf(stderr, "mkey_enctype_to_string: %s\n", error_message(err));
   } else {
-    printf("%d -> %s\n", enctype, etypestr);
+    printf("%ld -> %s\n", enctype, etypestr);
   }
   return 0;
 }
