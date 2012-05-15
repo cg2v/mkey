@@ -22,6 +22,9 @@
 # any improvements or extensions that they make and grant Carnegie Mellon
 # the rights to redistribute these changes.
 
+srcdir ?= .
+VPATH=$(srcdir)
+
 uname := $(shell uname)
 empty :=
 space := $(empty) $(empty)
@@ -60,6 +63,7 @@ endif
 endif
 
 override CFLAGS += ${OPTMZ}
+override CPPFLAGS := -I. -I$(srcdir) ${CPPFLAGS}
 
 SOVERS = 1
 SOBASE = libmkey
