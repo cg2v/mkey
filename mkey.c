@@ -22,8 +22,7 @@
  * any improvements or extensions that they make and grant Carnegie Mellon
  * the rights to redistribute these changes.
  * 
- * $Id$
- * master key maintenance client
+ * mkey.c - master key maintenance client
  */
 
 

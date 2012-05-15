@@ -22,10 +22,7 @@
 # any improvements or extensions that they make and grant Carnegie Mellon
 # the rights to redistribute these changes.
 # 
-# $Id$
-# mkey protocol errors
-
-id "$Id"
+# mkey_err.et - mkey protocol errors
 
 error_table mkey
 

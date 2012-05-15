@@ -21,8 +21,6 @@
 #
 # any improvements or extensions that they make and grant Carnegie Mellon
 # the rights to redistribute these changes.
-# 
-# $Id$
 
 SYS=$(shell cat /etc/mw/sysname)
 DESTDIR=/dist/sw.mkey.${SYS}

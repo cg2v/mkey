@@ -22,8 +22,7 @@
  * any improvements or extensions that they make and grant Carnegie Mellon
  * the rights to redistribute these changes.
  * 
- * $Id$
- * mkey library implementation
+ * libmkey.c - mkey library implementation
  */
 
 #include <sys/types.h>

@@ -22,8 +22,7 @@
  * any improvements or extensions that they make and grant Carnegie Mellon
  * the rights to redistribute these changes.
  * 
- * $Id$
- * master key TCP relay agent
+ * mkrelay.c - master key TCP relay agent
  */
 
 
