@@ -103,14 +103,14 @@ int main(int argc, char **argv)
   RSA_free(rsa);
 
   /* load the encrypted data */
-  filename = malloc(strlen(HDB_DB_DIR) + strlen(tag) + strlen(namebuf) + 32);
+  filename = malloc(strlen(MKEY_DB_DIR) + strlen(tag) + strlen(namebuf) + 32);
   if (!filename) {
     fprintf(stderr, "Out of memory!\n");
     p15_simple_finish(ctx);
     exit(1);
   }
   sprintf(filename, "%s/mkey_data/%s.%s.%d",
-          HDB_DB_DIR, tag, namebuf, meta_kvno);
+          MKEY_DB_DIR, tag, namebuf, meta_kvno);
 
   if (stat(filename, &sbuf)) {
     fprintf(stderr, "%s: %s\n", filename, strerror(errno));

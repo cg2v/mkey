@@ -27,6 +27,8 @@
 
 #include <sys/types.h>
 
+#define MKEY_DB_DIR         "/var/heimdal"
+
 typedef int32_t MKey_Error;
 typedef int32_t MKey_Integer;
 typedef struct {

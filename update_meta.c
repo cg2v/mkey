@@ -36,13 +36,13 @@ static int encrypt_one(char *tag, char *user, int kvno, MKey_DataBlock *key)
   printf("Encrypting for %s...\n", user);
 
   err = ENOMEM;
-  l = strlen(HDB_DB_DIR) + strlen(user) + strlen(tag) + 32;
+  l = strlen(MKEY_DB_DIR) + strlen(user) + strlen(tag) + 32;
   keyfile = malloc(l);
   if (!keyfile)  { err = ENOMEM; goto out; }
   datafile = malloc(l);
   if (!datafile) { err = ENOMEM; goto out; }
-  sprintf(keyfile, "%s/mkey_public/%s", HDB_DB_DIR, user);
-  sprintf(datafile, "%s/mkey_data/%s.%s.%d", HDB_DB_DIR, tag, user, kvno);
+  sprintf(keyfile, "%s/mkey_public/%s", MKEY_DB_DIR, user);
+  sprintf(datafile, "%s/mkey_data/%s.%s.%d", MKEY_DB_DIR, tag, user, kvno);
 
   F = fopen(keyfile, "r");
   if (!F) { err = errno; goto out; }
@@ -138,25 +138,25 @@ int main(int argc, char **argv) {
   }
 
   /* make sure the data directory exists */
-  err = stat(HDB_DB_DIR "/mkey_data", &sbuf);
+  err = stat(MKEY_DB_DIR "/mkey_data", &sbuf);
   if (!err && !S_ISDIR(sbuf.st_mode)) {
-    fprintf(stderr, "%s: %s\n", HDB_DB_DIR "/mkey_data", strerror(ENOTDIR));
+    fprintf(stderr, "%s: %s\n", MKEY_DB_DIR "/mkey_data", strerror(ENOTDIR));
     exit(1);
   }
   if (err && errno == ENOENT)
-    err = mkdir(HDB_DB_DIR "/mkey_data", 0755);
+    err = mkdir(MKEY_DB_DIR "/mkey_data", 0755);
   if (err) {
-    fprintf(stderr, "%s: %s\n", HDB_DB_DIR "/mkey_data", strerror(errno));
+    fprintf(stderr, "%s: %s\n", MKEY_DB_DIR "/mkey_data", strerror(errno));
     exit(1);
   }
 
   /* open user list */
-  filename = malloc(strlen(HDB_DB_DIR) + strlen(tag) + 32);
+  filename = malloc(strlen(MKEY_DB_DIR) + strlen(tag) + 32);
   if (!filename) {
     fprintf(stderr, "%s: out of memory!\n", tag);
     exit(1);
   }
-  sprintf(filename, "%s/mkey_users.%s", HDB_DB_DIR, tag);
+  sprintf(filename, "%s/mkey_users.%s", MKEY_DB_DIR, tag);
   UF = fopen(filename, "r");
   if (!UF) {
     fprintf(stderr, "%s: %s\n", filename, strerror(errno));
