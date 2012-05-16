@@ -31,6 +31,7 @@
 #include <openssl/sha.h>
 #include <openssl/err.h>
 
+#include <libmkey.h>
 #include "pkcs15-simple.h"
 
 struct p15_simple_s 
@@ -128,7 +129,7 @@ int p15_simple_init(int reader_id, p15_simple_t *ctx) {
 int p15_simple_getlabel(p15_simple_t ctx, char *out, int outlen) {
      if (!ctx->p15card)
           return FAIL;
-     if (outlen < strlen(ctx->p15card->label))
+     if (outlen < 0 || (unsigned)outlen < strlen(ctx->p15card->label))
           return FAIL;
      strcpy(out, ctx->p15card->label);
      return OK;
@@ -138,7 +139,7 @@ int p15_simple_getlabel(p15_simple_t ctx, char *out, int outlen) {
 int p15_simple_getmanuf(p15_simple_t ctx, char *out, int outlen) {
      if (!ctx->p15card)
           return FAIL;
-     if (outlen < strlen(ctx->p15card->manufacturer_id))
+     if (outlen < 0 || (unsigned)outlen < strlen(ctx->p15card->manufacturer_id))
           return FAIL;
      strcpy(out, ctx->p15card->manufacturer_id);
      return OK;
@@ -148,7 +149,7 @@ int p15_simple_getmanuf(p15_simple_t ctx, char *out, int outlen) {
 int p15_simple_getserial(p15_simple_t ctx, char *out, int outlen) {
      if (!ctx->p15card)
           return FAIL;
-     if (outlen < strlen(ctx->p15card->serial_number))
+     if (outlen < 0 || (unsigned)outlen < strlen(ctx->p15card->serial_number))
           return FAIL;
      strcpy(out, ctx->p15card->serial_number);
      return OK;
@@ -176,7 +177,7 @@ int p15_simple_finish(p15_simple_t ctx) {
 static int setkey_common(p15_simple_t ctx) {
      int pubkeystatus, certstatus, prkeystatus, 
           prkeystatus1, prkeystatus2, pinstatus;
-     int i;
+     unsigned int i;
      char *keyid;
      sc_pkcs15_object_t *any_prkey;
      
@@ -357,7 +358,7 @@ int p15_simple_can_sign(p15_simple_t ctx){
 int p15_simple_getkeyid(p15_simple_t ctx, char *keyid, int outlen) {
      if (!ctx->keyisset)
           return FAIL;
-     if (outlen <= strlen(ctx->keyid))
+     if (outlen < 0 || (unsigned)outlen <= strlen(ctx->keyid))
           return FAIL;
      strcpy(keyid, ctx->keyid);
      return OK;
@@ -415,14 +416,15 @@ static int prkey_setup(p15_simple_t ctx) {
      
      if (ctx->haspin) {
           char prompt[80];
-          char *pincode;
+          char pincode[80];
                
 	  sprintf(prompt, "Enter PIN [%s]: ", ctx->obj_pin->label);
 	  while (1) {
 	       struct sc_pkcs15_pin_info *pinfo = 
 		    (struct sc_pkcs15_pin_info *) ctx->obj_pin->data;
 
-	       pincode = getpass(prompt);
+	       if (mkey_read_pw_string(pincode, sizeof(pincode), prompt, 0))
+		    goto fail_decrypt;
 	       if (strlen(pincode) == 0) {
 		    fprintf(stderr, "Pin entry aborted\n");
 		    goto fail_decrypt;
@@ -454,11 +456,11 @@ int p15_simple_decrypt(p15_simple_t ctx, unsigned char *inbuf, int inlen,
 
      if (prkey_setup(ctx)) 
           return FAIL;
-     if (inlen != ((sc_pkcs15_prkey_info_t *)ctx->obj_prkey_dec->data)->modulus_length/8) {
+     if (inlen < 0 || (unsigned)inlen != ((sc_pkcs15_prkey_info_t *)ctx->obj_prkey_dec->data)->modulus_length/8) {
           fprintf(stderr, "Input buffer is wrong length\n");
           goto fail_decrypt;
      }
-     if (*outlen < ((sc_pkcs15_prkey_info_t *)ctx->obj_prkey_dec->data)->modulus_length/8) {
+     if (*outlen < 0 || (unsigned)*outlen < ((sc_pkcs15_prkey_info_t *)ctx->obj_prkey_dec->data)->modulus_length/8) {
           fprintf(stderr, "output buffer is too small\n");
           goto fail_decrypt;
      }
@@ -486,11 +488,11 @@ static int do_sign(p15_simple_t ctx, unsigned char *inbuf, int inlen,
      if (prkey_setup(ctx)) 
           return FAIL;
      
-     if (inlen > ((sc_pkcs15_prkey_info_t *)ctx->obj_prkey_sign->data)->modulus_length/8) {
+     if ((unsigned)inlen > ((sc_pkcs15_prkey_info_t *)ctx->obj_prkey_sign->data)->modulus_length/8) {
           fprintf(stderr, "Input buffer is too large\n");
           goto fail_sign;
      }
-     if (*outlen != ((sc_pkcs15_prkey_info_t *)ctx->obj_prkey_sign->data)->modulus_length/8) {
+     if (*outlen < 0 || (unsigned)*outlen != ((sc_pkcs15_prkey_info_t *)ctx->obj_prkey_sign->data)->modulus_length/8) {
           fprintf(stderr, "output buffer is too small\n");
           goto fail_sign;
      }
