@@ -78,7 +78,7 @@ SONAME = ${SOBASE}.so.${SOVERS}
 SOOBJS = libmkey.o mkeycode.o mkey_err.o ui.o
 SOLIBS = ${RPCLIBS} -lcom_err ${SOCKLIBS}
 
-PROGRAMS = mkey mkrelay mkeyd
+PROGRAMS = mkey mkrelay mkeyd update_meta unlock_kdb
 HEADERS = libmkey.h mkey_err.h
 
 all: ${PROGRAMS} ${SONAME} ${HEADERS}
@@ -91,6 +91,12 @@ mkrelay: mkrelay.o ${SONAME}
 
 mkeyd: mkeyd.o ${SONAME}
 	${CC} ${MTFLAGS} ${LDFLAGS} -o $@ $^ ${RPCLIBS} -lpthread -lkrb5
+
+update_meta: update_meta.o ${SONAME}
+	${CC} ${LDFLAGS} -o $@ $^ -lcrypto -lcom_err
+
+unlock_kdb: unlock_kdb.o pkcs15-simple.o ${SONAME}
+	${CC} ${LDFLAGS} -o $@ $^ -lopensc -lcrypto -lcom_err
 
 ${SONAME}: ${SOOBJS}
 	${SHLD} ${SHLDFLAGS} -o ${SONAME}.new ${SOOBJS} ${SOLIBS}
@@ -133,5 +139,6 @@ mkeyd.o: mkeyd.c
 	${CC} -c ${MTFLAGS} ${CFLAGS} ${CPPFLAGS} -o $@ $<
 
 libmkey.o mkeycode.o mkeyd.o: mkey.h libmkey.h mkey_err.h
-mkrelay.o mkey.o : libmkey.h mkey_err.h
+mkrelay.o mkey.o update_meta.o unlock_kdb.o : libmkey.h mkey_err.h
 mkey_err.o: mkey_err.h
+unlock_kdb.o pkcs15-simple.o : pkcs15-simple.h
