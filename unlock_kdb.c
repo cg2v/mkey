@@ -3,6 +3,8 @@
  * Usage: unlock_kdb [<tag>]
  */
 
+#define _XOPEN_SOURCE 500  // for strdup
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -19,7 +21,12 @@
 #include <com_err.h>
 #include <libmkey.h>
 #include <mkey_err.h>
-#include "pkcs15-simple.h"
+#include "libp11.h"
+
+#define MKEY_PKCS11_MODULE "/usr/lib/opensc-pkcs11.so"
+
+#define lose(x) do { fprintf(stderr, "%s\n", x); goto out; } while (1)
+#define flose(f,x) do { fprintf(stderr, "%s: %s\n", f, x); goto out; } while (1)
 
 int main(int argc, char **argv)
 {
@@ -27,13 +34,17 @@ int main(int argc, char **argv)
   MKey_Integer meta_state, meta_kvno, meta_enctype;
   MKey_DataBlock keydata;
   struct rlimit rl;
-  p15_simple_t ctx;
   struct stat sbuf;
-  char *tag, namebuf[256], *filename;
-  unsigned char *ciphertext, *plaintext;
-  int size;;
-  FILE *F;
-  RSA *rsa;
+  char *tag, namebuf[256], *username = NULL, *filename = NULL;
+  unsigned char *ciphertext = NULL, *plaintext = NULL;
+  int keysize, plainsize, status = 1;
+  FILE *F = NULL;
+  PKCS11_CTX *ctx = NULL;
+  PKCS11_SLOT *slots = NULL, *slot = NULL;
+  PKCS11_KEY *keys = NULL, *key = NULL;
+  unsigned int nslots, nkeys, i;
+  int loaded = 0;
+
 
   initialize_mkey_error_table();
 
@@ -80,92 +91,113 @@ int main(int argc, char **argv)
 
 
   /* set up smartcard and find username */
-  if (p15_simple_init(0, &ctx)) exit(1);
-  if (p15_simple_getlabel(ctx, namebuf, sizeof(namebuf)-1)) {
-    p15_simple_finish(ctx);
-    exit(1);
+  if (!(ctx = PKCS11_CTX_new())) exit(1);
+  if (PKCS11_CTX_load(ctx, MKEY_PKCS11_MODULE)) {
+    fprintf(stderr, "Failed to load PKCS#11 module: %s\n",
+            ERR_reason_error_string(ERR_get_error()));
+    goto out;
   }
-  printf("Hello, %s\n", namebuf);
-  if (p15_simple_setkey(ctx, "KDB Access")) {
-    p15_simple_finish(ctx);
-    exit(1);
+  loaded = 1;
+
+  if (PKCS11_enumerate_slots(ctx, &slots, &nslots))
+    lose("no slots available");
+
+  if (!(slot = PKCS11_find_token(ctx, slots, nslots)) || !slot->token)
+    goto out;
+
+  if ((username = strchr(slot->token->label, ' '))) {
+    int l = username - slot->token->label;
+
+    if ((username = malloc(l + 1))) {
+      strncpy(username, slot->token->label, l);
+      username[l] = 0;
+    }
+  } else {
+    username = strdup(slot->token->label);
   }
-  if (!p15_simple_can_decrypt(ctx)) {
-    printf("Hm... your smart card doesn't seem to have a decryption key.\n");
-    p15_simple_finish(ctx);
-    exit(1);
+  if (!username) lose("out of memory");
+  printf("Hello, %s\n", username);
+
+  /* find the KDB access key */
+  if (PKCS11_enumerate_keys(slot->token, &keys, &nkeys))
+    lose("unable to enumerate keys");
+  for (i = 0; i < nkeys; i++) {
+    if (keys[i].label && !strcmp(keys[i].label, "KDB Access")) {
+      key = &keys[i];
+      break;
+    }
   }
-  if (p15_simple_getkeydata(ctx, &rsa)) {
-    p15_simple_finish(ctx);
-    exit(1);
-  }
-  size = RSA_size(rsa);
-  RSA_free(rsa);
+  if (!key)
+    lose("unable to find KDB access key");
+  keysize = PKCS11_get_key_size(key);
 
   /* load the encrypted data */
-  filename = malloc(strlen(MKEY_DB_DIR) + strlen(tag) + strlen(namebuf) + 32);
-  if (!filename) {
-    fprintf(stderr, "Out of memory!\n");
-    p15_simple_finish(ctx);
-    exit(1);
-  }
+  filename = malloc(strlen(MKEY_DB_DIR) + strlen(tag) + strlen(username) + 32);
+  if (!filename)
+    lose("out of memory");
   sprintf(filename, "%s/mkey_data/%s.%s.%d",
-          MKEY_DB_DIR, tag, namebuf, meta_kvno);
+          MKEY_DB_DIR, tag, username, meta_kvno);
 
-  if (stat(filename, &sbuf)) {
-    fprintf(stderr, "%s: %s\n", filename, strerror(errno));
-    p15_simple_finish(ctx);
-    exit(1);
-  }
+  if (stat(filename, &sbuf))
+    flose(filename, strerror(errno));
 
-  ciphertext = malloc(sbuf.st_size);
-  if (!ciphertext) {
-    fprintf(stderr, "%s: out of memory!\n", filename);
-    p15_simple_finish(ctx);
-    exit(1);
-  }
+  if (!(ciphertext = malloc(sbuf.st_size)))
+    flose(filename, "out of memory");
 
-  F = fopen(filename, "r");
-  if (!F) {
-    fprintf(stderr, "%s: %s\n", filename, strerror(errno));
-    p15_simple_finish(ctx);
-    exit(1);
-  }
+  if (!(F = fopen(filename, "r")))
+    flose(filename, strerror(errno));
 
   if (fread(ciphertext, sbuf.st_size, 1, F) != 1) {
     if (feof(F))
-      fprintf(stderr, "%s: unexpected EOF\n", filename);
+      flose(filename, "unexpected EOF");
     else
-      fprintf(stderr, "%s: %s\n", filename, strerror(errno));
-    fclose(F);
-    p15_simple_finish(ctx);
-    exit(1);
+      flose(filename, strerror(errno));
   }
-
 
   /* decrypt it */
-  plaintext = malloc(size);
-  if (!plaintext) {
-    fprintf(stderr, "Out of memory!\n");
-    exit(1);
+  if (!(plaintext = malloc(keysize)))
+    lose("out of memory");
+
+  if (key->needLogin) {
+    char prompt[80];
+    char pincode[80];
+
+    sprintf(prompt, "Enter PIN [%s]: ", slot->token->label);
+    if (mkey_read_pw_string(pincode, sizeof(pincode), prompt, 0))
+      goto out;
+    if (strlen(pincode) == 0) {
+      fprintf(stderr, "Pin entry aborted\n");
+      goto out;
+    }
+
+    err = PKCS11_login(slot, 0, pincode);
+    memset(pincode, 0, sizeof(pincode));
+    if (err) lose("PIN verification failed");
   }
-  if (p15_simple_decrypt(ctx, ciphertext, sbuf.st_size, plaintext, &size)) {
-    p15_simple_finish(ctx);
-    exit(1);
-  }
-  p15_simple_finish(ctx);
-  free(ciphertext);
+
+  plainsize = PKCS11_private_decrypt(sbuf.st_size, ciphertext, plaintext,
+                                     key, RSA_PKCS1_PADDING);
+  if (plainsize == -1)
+    lose("decrypt failed");
 
   keydata.data = plaintext;
-  keydata.size = size;
+  keydata.size = plainsize;
   err = mkey_unseal_keys(tag, meta_enctype, &keydata);
-  memset(plaintext, 0, size);
-  free(plaintext);
-  if (err) {
-    fprintf(stderr, "%s: %s\n", tag, error_message(err));
-    exit(1);
-  }
+  memset(plaintext, 0, plainsize);
+  if (err)
+    flose(tag, error_message(err));
 
   printf("%s: keys unlocked\n", tag);
-  exit(0);
+  status = 0;
+
+out:
+  if (plaintext) free(plaintext);
+  if (F) fclose(F);
+  if (ciphertext) free(ciphertext);
+  if (filename) free(filename);
+  if (username) free(username);
+  if (slots) PKCS11_release_all_slots(ctx, slots, nslots);
+  if (loaded) PKCS11_CTX_unload(ctx);
+  if (ctx) PKCS11_CTX_free(ctx);
+  exit(status);
 }

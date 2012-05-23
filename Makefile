@@ -95,8 +95,8 @@ mkeyd: mkeyd.o ${SONAME}
 update_meta: update_meta.o ${SONAME}
 	${CC} ${LDFLAGS} -o $@ $^ -lcrypto -lcom_err
 
-unlock_kdb: unlock_kdb.o pkcs15-simple.o ${SONAME}
-	${CC} ${LDFLAGS} -o $@ $^ -lopensc -lcrypto -lcom_err
+unlock_kdb: unlock_kdb.o ${SONAME}
+	${CC} ${LDFLAGS} -o $@ $^ -lopensc -lcrypto -lcom_err -lp11
 
 ${SONAME}: ${SOOBJS}
 	${SHLD} ${SHLDFLAGS} -o ${SONAME}.new ${SOOBJS} ${SOLIBS}
@@ -141,4 +141,4 @@ mkeyd.o: mkeyd.c
 libmkey.o mkeycode.o mkeyd.o: mkey.h libmkey.h mkey_err.h
 mkrelay.o mkey.o update_meta.o unlock_kdb.o : libmkey.h mkey_err.h
 mkey_err.o: mkey_err.h
-unlock_kdb.o pkcs15-simple.o : pkcs15-simple.h
+pkcs15-simple.o : pkcs15-simple.h
