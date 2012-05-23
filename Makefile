@@ -141,4 +141,3 @@ mkeyd.o: mkeyd.c
 libmkey.o mkeycode.o mkeyd.o: mkey.h libmkey.h mkey_err.h
 mkrelay.o mkey.o update_meta.o unlock_kdb.o : libmkey.h mkey_err.h
 mkey_err.o: mkey_err.h
-pkcs15-simple.o : pkcs15-simple.h
