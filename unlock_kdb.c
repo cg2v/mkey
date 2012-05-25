@@ -150,19 +150,6 @@ int main(int argc, char **argv)
   if (!username) lose("out of memory");
   printf("Hello, %s\n", username);
 
-  /* find the KDB access key */
-  if (PKCS11_enumerate_keys(slot->token, &keys, &nkeys))
-    lose("unable to enumerate keys");
-  for (i = 0; i < nkeys; i++) {
-    if (keys[i].label && !strcmp(keys[i].label, "KDB Access")) {
-      key = &keys[i];
-      break;
-    }
-  }
-  if (!key)
-    lose("unable to find KDB access key");
-  keysize = PKCS11_get_key_size(key);
-
   /* load the encrypted data */
   filename = malloc(strlen(db_dir) + strlen(tag) + strlen(username) + 32);
   if (!filename)
@@ -186,10 +173,6 @@ int main(int argc, char **argv)
       flose(filename, strerror(errno));
   }
 
-  /* decrypt it */
-  if (!(plaintext = malloc(keysize)))
-    lose("out of memory");
-
   if (slot->token->loginRequired) {
     char prompt[80];
     char pincode[80];
@@ -207,6 +190,22 @@ int main(int argc, char **argv)
     if (err) lose("PIN verification failed");
   }
 
+  /* find the KDB access key */
+  if (PKCS11_enumerate_keys(slot->token, &keys, &nkeys))
+    lose("unable to enumerate keys");
+  for (i = 0; i < nkeys; i++) {
+    if (keys[i].label && !strcmp(keys[i].label, "KDB Access")) {
+      key = &keys[i];
+      break;
+    }
+  }
+  if (!key)
+    lose("unable to find KDB access key");
+  keysize = PKCS11_get_key_size(key);
+  if (!(plaintext = malloc(keysize)))
+    lose("out of memory");
+
+  /* decrypt it */
   plainsize = PKCS11_private_decrypt(sbuf.st_size, ciphertext, plaintext,
                                      key, RSA_PKCS1_PADDING);
   if (plainsize == -1)
