@@ -190,7 +190,7 @@ int main(int argc, char **argv)
   if (!(plaintext = malloc(keysize)))
     lose("out of memory");
 
-  if (key->needLogin) {
+  if (slot->token->loginRequired) {
     char prompt[80];
     char pincode[80];
 
