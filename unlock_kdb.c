@@ -11,6 +11,7 @@
 #include <sys/resource.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <errno.h>
 
@@ -28,6 +29,19 @@
 #define lose(x) do { fprintf(stderr, "%s\n", x); goto out; } while (1)
 #define flose(f,x) do { fprintf(stderr, "%s: %s\n", f, x); goto out; } while (1)
 
+static char *db_dir = MKEY_DB_DIR;
+
+static void usage(char *msg) {
+  FILE *F = msg ? stderr : stdout;
+
+  if (msg) fprintf(stderr, "unlock_kdb: %s\n", msg);
+  fprintf(F, "Usage: unlock_kdb [-D dir] [tag]\n");
+  fprintf(F, "       unlock_kdb -h\n");
+  fprintf(F, "   -D dir   Specify database directory [%s]\n", MKEY_DB_DIR);
+  fprintf(F, "    -h      Print this help message\n");
+  exit(!!msg);
+}
+
 int main(int argc, char **argv)
 {
   MKey_Error err;
@@ -43,17 +57,24 @@ int main(int argc, char **argv)
   PKCS11_SLOT *slots = NULL, *slot = NULL;
   PKCS11_KEY *keys = NULL, *key = NULL;
   unsigned int nslots, nkeys, i;
-  int loaded = 0;
+  int opt, loaded = 0;
 
 
   initialize_mkey_error_table();
 
-  if (argc > 2) {
-    fprintf(stderr, "Usage: %s [tag]\n", argv[0]);
-    exit(1);
+  opterr = 0;
+  while ((opt = getopt(argc, argv, "D:h")) != -1) {
+    switch (opt) {
+      case 'D': db_dir = optarg; continue;
+      case 'h': usage(0);
+      default:  usage("unknown option");
+    }
   }
-  if (argc > 1) tag = argv[1];
-  else          tag = "default";
+  if (argc - optind > 2)
+    usage("Too many arguments!");
+
+  if (argc > optind) tag = argv[optind];
+  else               tag = "default";
 
 
   /* lock down! */
@@ -132,11 +153,11 @@ int main(int argc, char **argv)
   keysize = PKCS11_get_key_size(key);
 
   /* load the encrypted data */
-  filename = malloc(strlen(MKEY_DB_DIR) + strlen(tag) + strlen(username) + 32);
+  filename = malloc(strlen(db_dir) + strlen(tag) + strlen(username) + 32);
   if (!filename)
     lose("out of memory");
   sprintf(filename, "%s/mkey_data/%s.%s.%d",
-          MKEY_DB_DIR, tag, username, meta_kvno);
+          db_dir, tag, username, meta_kvno);
 
   if (stat(filename, &sbuf))
     flose(filename, strerror(errno));
