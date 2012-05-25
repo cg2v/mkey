@@ -36,10 +36,11 @@ static void usage(char *msg) {
   FILE *F = msg ? stderr : stdout;
 
   if (msg) fprintf(stderr, "unlock_kdb: %s\n", msg);
-  fprintf(F, "Usage: unlock_kdb [-D dir] [-s sock] [tag]\n");
+  fprintf(F, "Usage: unlock_kdb [-D dir] [-s sock] [-t token] [tag]\n");
   fprintf(F, "       unlock_kdb -h\n");
   fprintf(F, "   -h       Print this help message\n");
   fprintf(F, "   -s sock  mkey server socket name [%s]\n", MKEY_SOCKET);
+  fprintf(F, "   -t token Select PKCS#11 token slot\n");
   fprintf(F, "   -D dir   Specify database directory [%s]\n", MKEY_DB_DIR);
   exit(!!msg);
 }
@@ -59,16 +60,17 @@ int main(int argc, char **argv)
   PKCS11_SLOT *slots = NULL, *slot = NULL;
   PKCS11_KEY *keys = NULL, *key = NULL;
   unsigned int nslots, nkeys, i;
-  int opt, loaded = 0;
+  int opt, loaded = 0, slotix = -1;
 
 
   initialize_mkey_error_table();
 
   opterr = 0;
-  while ((opt = getopt(argc, argv, "hs:D:")) != -1) {
+  while ((opt = getopt(argc, argv, "hs:t:D:")) != -1) {
     switch (opt) {
       case 'D': db_dir = optarg; continue;
-      case 's': mkey_set_socket_name(argv[2]); continue;
+      case 's': mkey_set_socket_name(optarg); continue;
+      case 't': slotix = atoi(optarg); continue;
       case 'h': usage(0);
       default:  usage("unknown option");
     }
@@ -126,8 +128,14 @@ int main(int argc, char **argv)
   if (PKCS11_enumerate_slots(ctx, &slots, &nslots))
     lose("no slots available");
 
-  if (!(slot = PKCS11_find_token(ctx, slots, nslots)) || !slot->token)
-    goto out;
+  if (slotix < 0) {
+    if (!(slot = PKCS11_find_token(ctx, slots, nslots)) || !slot->token)
+      goto out;
+  } else if ((unsigned int) slotix >= nslots) {
+    lose("slot index out of range");
+  } else {
+    slot = &slots[slotix];
+  }
 
   if ((username = strchr(slot->token->label, ' '))) {
     int l = username - slot->token->label;
