@@ -42,6 +42,7 @@ static void usage(char *msg) {
   fprintf(F, "   -s sock  mkey server socket name [%s]\n", MKEY_SOCKET);
   fprintf(F, "   -t token Select PKCS#11 token slot\n");
   fprintf(F, "   -D dir   Specify database directory [%s]\n", MKEY_DB_DIR);
+  fprintf(F, "   -F file  Specify encrypted data file\n");
   exit(!!msg);
 }
 
@@ -66,9 +67,10 @@ int main(int argc, char **argv)
   initialize_mkey_error_table();
 
   opterr = 0;
-  while ((opt = getopt(argc, argv, "hs:t:D:")) != -1) {
+  while ((opt = getopt(argc, argv, "hs:t:D:F:")) != -1) {
     switch (opt) {
       case 'D': db_dir = optarg; continue;
+      case 'F': filename = optarg; continue;
       case 's': mkey_set_socket_name(optarg); continue;
       case 't': slotix = atoi(optarg); continue;
       case 'h': usage(0);
@@ -151,11 +153,13 @@ int main(int argc, char **argv)
   printf("Hello, %s\n", username);
 
   /* load the encrypted data */
-  filename = malloc(strlen(db_dir) + strlen(tag) + strlen(username) + 32);
-  if (!filename)
-    lose("out of memory");
-  sprintf(filename, "%s/mkey_data/%s.%s.%d",
-          db_dir, tag, username, meta_kvno);
+  if (filename == NULL) {
+    filename = malloc(strlen(db_dir) + strlen(tag) + strlen(username) + 32);
+    if (!filename)
+      lose("out of memory");
+    sprintf(filename, "%s/mkey_data/%s.%s.%d",
+            db_dir, tag, username, meta_kvno);
+  }
 
   if (stat(filename, &sbuf))
     flose(filename, strerror(errno));
@@ -225,7 +229,6 @@ out:
   if (plaintext) free(plaintext);
   if (F) fclose(F);
   if (ciphertext) free(ciphertext);
-  if (filename) free(filename);
   if (username) free(username);
   if (slots) PKCS11_release_all_slots(ctx, slots, nslots);
   if (loaded) PKCS11_CTX_unload(ctx);
