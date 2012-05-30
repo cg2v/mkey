@@ -92,7 +92,7 @@ static int _mkey_do_stream_req(char *reqBUF, int reqlen,
   n = send(mkeyd_sock, &pktsize, sizeof(pktsize), SEND_FLAGS);
   if (n < 0 && errno == EINTR) return STREAM_REQ_INTR;
   if (n == sizeof(pktsize)) {
-    for (;;) {
+    while (reqlen != 0) {
       n = send(mkeyd_sock, reqBUF, reqlen, SEND_FLAGS);
       if (n >= 0 || errno != EINTR) break;
     }
@@ -125,7 +125,7 @@ static int _mkey_do_stream_req(char *reqBUF, int reqlen,
       mkeyd_sock = -1;
       return STREAM_REQ_BIG;
     }
-    for (;;) {
+    while (pktsize != 0) {
       n = recv(mkeyd_sock, repBUF, pktsize, RECV_FLAGS);
       if (n >= 0 || errno != EINTR) break;
     }
