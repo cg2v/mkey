@@ -112,6 +112,7 @@ clean:
 
 
 install: ${DESTDIR}/bin/mkey
+install: ${DESTDIR}/bin/mkrelay
 install: ${DESTDIR}/libexec/mkeyd
 install: ${DESTDIR}/${_lib}/${SONAME}
 install: ${HEADERS:%=${DESTDIR}/include/%}
