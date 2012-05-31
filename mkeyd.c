@@ -1519,6 +1519,7 @@ static void *client_loop(void *arg)
     } else if (n >= 0) n = errno = -1;
     if (n != pktsize) break;
 
+    replen = MKEY_MAXSIZE;
     proc_request(req_buf, pktsize, rep_buf, &replen);
 
     pktsize = htonl(replen);
