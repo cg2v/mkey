@@ -23,6 +23,7 @@
 # the rights to redistribute these changes.
 
 srcdir ?= .
+psrcdir ?= $(srcdir)
 VPATH=$(srcdir)
 
 uname := $(shell uname)

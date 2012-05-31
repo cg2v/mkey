@@ -9,6 +9,7 @@ use PSMake;
 $Make = $ENV{MAKE} = 'gmake' unless defined($uMakeVars{MAKE});
 $MakeVars{RELDIR}  = \$ReleaseDir;
 $MakeVars{DESTDIR} = '${RELDIR}/usr/local';
+$MakeVars{srcdir} = $SourceDir;
 
 if ($SysName eq 'sun4x_59') {
 } elsif ($SysName eq 'amd64_u1204') {
