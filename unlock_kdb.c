@@ -12,7 +12,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <dirent.h>
 #include <string.h>
+#include <regex.h>
 #include <errno.h>
 #include <limits.h>
 
@@ -101,7 +103,7 @@ int main(int argc, char **argv)
   MKey_Integer meta_state, meta_kvno, meta_enctype;
   MKey_DataBlock keydata;
   struct rlimit rl;
-  char *tag, namebuf[256], *username = NULL, *filename = NULL;
+  char *tag, namebuf[256], *username = NULL, *fnpat = NULL, *filename = NULL;
   unsigned char *plaintext = NULL;
   int keysize, plainsize, status = 1;
   PKCS11_CTX *ctx = NULL;
@@ -231,17 +233,62 @@ int main(int argc, char **argv)
   if (!(plaintext = malloc(keysize)))
     lose("out of memory");
 
-  /* load the encrypted data */
-  if (filename == NULL) {
-    filename = malloc(strlen(db_dir) + strlen(tag) + strlen(username) + 32);
-    if (!filename)
-      lose("out of memory");
-    sprintf(filename, "%s/mkey_data/%s.%s.%d",
-            db_dir, tag, username, meta_kvno);
-  }
+  if (filename) {
+    plainsize = try_decrypt(filename, plaintext, key);
+    if (plainsize < 0) goto out;
 
-  plainsize = try_decrypt(filename, plaintext, key);
-  if (plainsize < 0) goto out;
+  } else {
+    int fnsize = 0, dirlen, l;
+    regex_t fnreg;
+    struct dirent *de;
+    DIR *D;
+
+    // XXX we really should validate and escape tag and username
+    fnpat = malloc(strlen(tag) + strlen(username) + 40);
+    if (!fnpat) lose("out of memory");
+    sprintf(fnpat, "%s\\.%s(\\+.*)?\\.%d", tag, username, meta_kvno);
+    fprintf(stderr, "Pattern: /%s/\n", fnpat);
+    if ((err = regcomp(&fnreg, fnpat, REG_EXTENDED|REG_NOSUB))) {
+      regerror(err, &fnreg, namebuf, sizeof(namebuf));
+      lose(namebuf);
+    }
+
+    plainsize = 0;
+    filename = NULL;
+    dirlen = strlen(db_dir);
+    if (!(D = opendir(db_dir))) {
+      regfree(&fnreg);
+      flose(db_dir, strerror(errno));
+    }
+
+    while ((de = readdir(D))) {
+      fprintf(stderr, "Considering '%s'\n", de->d_name);
+      if (regexec(&fnreg, de->d_name, 0, NULL, 0)) {
+        fprintf(stderr, "No match\n");
+        continue;
+      }
+
+      l = dirlen + strlen(de->d_name) + 2;
+      if (fnsize < l) {
+        filename = realloc(filename, l);
+        if (!filename) {
+          closedir(D);
+          regfree(&fnreg);
+          lose("out of memory");
+        }
+        fnsize = l;
+        strcpy(filename, db_dir);
+        filename[dirlen] = '/';
+      }
+      strcpy(filename + dirlen + 1, de->d_name);
+      plainsize = try_decrypt(filename, plaintext, key);
+      if (plainsize > 0) break;
+    }
+    closedir(D);
+    regfree(&fnreg);
+    if (plainsize <= 0)
+      lose("unable to decrypt any key data");
+  }
 
   keydata.data = plaintext;
   keydata.size = plainsize;
@@ -255,6 +302,7 @@ int main(int argc, char **argv)
 
 out:
   if (plaintext) free(plaintext);
+  if (fnpat) free(fnpat);
   if (username) free(username);
   if (slots) PKCS11_release_all_slots(ctx, slots, nslots);
   if (loaded) PKCS11_CTX_unload(ctx);
