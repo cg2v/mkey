@@ -114,11 +114,15 @@ clean:
 install: ${DESTDIR}/bin/mkey
 install: ${DESTDIR}/bin/mkrelay
 install: ${DESTDIR}/libexec/mkeyd
+install: ${DESTDIR}/sbin/update_meta
+install: ${DESTDIR}/sbin/unlock_kdb
 install: ${DESTDIR}/${_lib}/${SONAME}
 install: ${HEADERS:%=${DESTDIR}/include/%}
 
 ${DESTDIR}/bin/mkey          : mkey          ; ${CPRULE}
 ${DESTDIR}/bin/mkrelay       : mkrelay       ; ${CPRULE}
+${DESTDIR}/sbin/update_meta  : update_meta   ; ${CPRULE}
+${DESTDIR}/sbin/unlock_kdb   : unlock_kdb    ; ${CPRULE}
 ${DESTDIR}/libexec/mkeyd     : mkeyd         ; ${CPRULE}
 ${DESTDIR}/include/%         : %             ; ${CPRULE}
 
