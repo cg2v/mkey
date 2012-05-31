@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <limits.h>
 
 #include <openssl/rsa.h>
 
@@ -46,17 +47,63 @@ static void usage(char *msg) {
   exit(!!msg);
 }
 
+/*
+ * Load ciphertext into memory and attempt to decrypt it.
+ * Returns the size of the plaintext, or -1 on error.
+ */
+static int try_decrypt(char *filename, unsigned char *plaintext,
+                       PKCS11_KEY *key)
+{
+  struct stat sbuf;
+  unsigned char *ciphertext = NULL;
+  int plainsize;
+  FILE *F = NULL;
+
+  if (stat(filename, &sbuf))
+    flose(filename, strerror(errno));
+
+  if (!sbuf.st_size)
+    flose(filename, "empty file");
+
+  if (sbuf.st_size < 0 || sbuf.st_size > INT_MAX)
+    flose(filename, "invalid file size");
+
+  if (!(ciphertext = malloc(sbuf.st_size)))
+    flose(filename, "out of memory");
+
+  if (!(F = fopen(filename, "r")))
+    flose(filename, strerror(errno));
+
+  if (fread(ciphertext, sbuf.st_size, 1, F) != 1) {
+    if (feof(F))
+      flose(filename, "unexpected EOF");
+    else
+      flose(filename, strerror(errno));
+  }
+  fclose(F);
+
+  plainsize = PKCS11_private_decrypt(sbuf.st_size, ciphertext, plaintext,
+                                     key, RSA_PKCS1_PADDING);
+  free(ciphertext);
+  if (plainsize < 0)
+    flose(filename, "decryption failed");
+  return plainsize;
+
+out:
+  if (F) fclose(F);
+  if (ciphertext) free(ciphertext);
+  return -1;
+}
+
 int main(int argc, char **argv)
 {
   MKey_Error err;
   MKey_Integer meta_state, meta_kvno, meta_enctype;
   MKey_DataBlock keydata;
   struct rlimit rl;
-  struct stat sbuf;
   char *tag, namebuf[256], *username = NULL, *filename = NULL;
-  unsigned char *ciphertext = NULL, *plaintext = NULL;
+  unsigned char *plaintext = NULL;
   int keysize, plainsize, status = 1;
-  FILE *F = NULL;
   PKCS11_CTX *ctx = NULL;
   PKCS11_SLOT *slots = NULL, *slot = NULL;
   PKCS11_KEY *keys = NULL, *key = NULL;
@@ -152,31 +199,6 @@ int main(int argc, char **argv)
   if (!username) lose("out of memory");
   printf("Hello, %s\n", username);
 
-  /* load the encrypted data */
-  if (filename == NULL) {
-    filename = malloc(strlen(db_dir) + strlen(tag) + strlen(username) + 32);
-    if (!filename)
-      lose("out of memory");
-    sprintf(filename, "%s/mkey_data/%s.%s.%d",
-            db_dir, tag, username, meta_kvno);
-  }
-
-  if (stat(filename, &sbuf))
-    flose(filename, strerror(errno));
-
-  if (!(ciphertext = malloc(sbuf.st_size)))
-    flose(filename, "out of memory");
-
-  if (!(F = fopen(filename, "r")))
-    flose(filename, strerror(errno));
-
-  if (fread(ciphertext, sbuf.st_size, 1, F) != 1) {
-    if (feof(F))
-      flose(filename, "unexpected EOF");
-    else
-      flose(filename, strerror(errno));
-  }
-
   if (slot->token->loginRequired) {
     char prompt[80];
     char pincode[80];
@@ -209,11 +231,17 @@ int main(int argc, char **argv)
   if (!(plaintext = malloc(keysize)))
     lose("out of memory");
 
-  /* decrypt it */
-  plainsize = PKCS11_private_decrypt(sbuf.st_size, ciphertext, plaintext,
-                                     key, RSA_PKCS1_PADDING);
-  if (plainsize == -1)
-    lose("decrypt failed");
+  /* load the encrypted data */
+  if (filename == NULL) {
+    filename = malloc(strlen(db_dir) + strlen(tag) + strlen(username) + 32);
+    if (!filename)
+      lose("out of memory");
+    sprintf(filename, "%s/mkey_data/%s.%s.%d",
+            db_dir, tag, username, meta_kvno);
+  }
+
+  plainsize = try_decrypt(filename, plaintext, key);
+  if (plainsize < 0) goto out;
 
   keydata.data = plaintext;
   keydata.size = plainsize;
@@ -227,8 +255,6 @@ int main(int argc, char **argv)
 
 out:
   if (plaintext) free(plaintext);
-  if (F) fclose(F);
-  if (ciphertext) free(ciphertext);
   if (username) free(username);
   if (slots) PKCS11_release_all_slots(ctx, slots, nslots);
   if (loaded) PKCS11_CTX_unload(ctx);
