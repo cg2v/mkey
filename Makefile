@@ -97,7 +97,7 @@ update_meta: update_meta.o ${SONAME}
 	${CC} ${LDFLAGS} -o $@ $^ -lcrypto -lcom_err
 
 unlock_kdb: unlock_kdb.o ${SONAME}
-	${CC} ${LDFLAGS} -o $@ $^ -lopensc -lcrypto -lcom_err -lp11
+	${CC} ${LDFLAGS} -o $@ $^ -lcrypto -lcom_err -lp11
 
 ${SONAME}: ${SOOBJS}
 	${SHLD} ${SHLDFLAGS} -o ${SONAME}.new ${SOOBJS} ${SOLIBS}
