@@ -1548,7 +1548,11 @@ static void mainloop(void)
   struct sockaddr_un myaddr;
   int err, lsock, csock, *csockp;
   socklen_t addrsize = strlen(sock_name) + 1;
+  pthread_attr_t client_attr;
   pthread_t client_thr;
+
+  pthread_attr_init(&client_attr);
+  pthread_attr_setdetachstate(&client_attr, PTHREAD_CREATE_DETACHED);
 
   if (addrsize > sizeof(myaddr.sun_path)) {
     syslog(LOG_ERR, "%s: socket filename too long\n", sock_name);
@@ -1604,7 +1608,7 @@ static void mainloop(void)
     }
 
     *csockp = csock;
-    if ((err = pthread_create(&client_thr, NULL, client_loop, csockp))) {
+    if ((err = pthread_create(&client_thr, &client_attr, client_loop, csockp))) {
       syslog(LOG_ERR, "pthread_create: %s", strerror(err));
       free(csockp);
       close(csock);
