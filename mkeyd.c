@@ -49,7 +49,7 @@
 #include <errno.h>
 
 #include <krb5.h>
-#include <krb5_err.h>
+//#include <krb5_err.h>
 #include <hdb.h>
 
 #include "libmkey.h"

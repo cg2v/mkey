@@ -12,8 +12,13 @@ $MakeVars{DESTDIR} = '${RELDIR}/usr/local';
 $MakeVars{srcdir} = $SourceDir;
 
 if ($SysName eq 'sun4x_59') {
-} elsif ($SysName eq 'amd64_u1204') {
+} elsif ($SysName =~ /^amd64_u1[24]04$/) {
   $MakeVars{_lib} = 'lib';
+} elsif ($SysName =~ /^amd64_u/) {
+  $MakeVars{_lib} = 'lib';
+  $MakeVars{CPPFLAGS} = '-I/usr/include/heimdal';
+  $MakeVars{LDFLAGS} = '-L/usr/lib/x86_64-linux-gnu/heimdal';
+  $MakeVars{LDFLAGS} .= ' -Wl,-R/usr/lib/x86_64-linux-gnu/heimdal';
 }
 
 # vim:set ft=perl sw=2 et:
