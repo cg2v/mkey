@@ -1,1 +1,24 @@
-PSMakefile.MW
+# PSMakefile for mkey on MiniWorld
+# If you are looking for a starting point, please don't grab a PSMakefile
+# from a random collection.  Especially don't grab a PSMakefile.MW, which
+# is intended for the limited environment of MiniWorld.  Instead, see the
+# samples directory in /afs/cs.cmu.edu/misc/tools/src/samples
+
+use PSMake;
+
+$Make = $ENV{MAKE} = 'gmake' unless defined($uMakeVars{MAKE});
+$MakeVars{RELDIR}  = \$ReleaseDir;
+$MakeVars{DESTDIR} = '${RELDIR}/usr/local';
+$MakeVars{srcdir} = $SourceDir;
+
+if ($SysName eq 'sun4x_59') {
+} elsif ($SysName =~ /^amd64_u1[24]04$/) {
+  $MakeVars{_lib} = 'lib';
+} elsif ($SysName =~ /^amd64_u/) {
+  $MakeVars{_lib} = 'lib';
+  $MakeVars{CPPFLAGS} = '-I/usr/include/heimdal';
+  $MakeVars{LDFLAGS} = '-L/usr/lib/x86_64-linux-gnu/heimdal';
+  $MakeVars{LDFLAGS} .= ' -Wl,-R/usr/lib/x86_64-linux-gnu/heimdal';
+}
+
+# vim:set ft=perl sw=2 et:
