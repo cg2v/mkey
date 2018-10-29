@@ -28,7 +28,8 @@
 #include "mkey.h"
 #include "libp11.h"
 
-#define MKEY_PKCS11_MODULE "/usr/lib/opensc-pkcs11.so"
+//#define MKEY_PKCS11_MODULE "/usr/lib/opensc-pkcs11.so"
+#define MKEY_PKCS11_MODULE "/usr/lib/x86_64-linux-gnu/pkcs11/opensc-pkcs11.so"
 
 #define lose(x) do { fprintf(stderr, "%s\n", x); goto out; } while (1)
 #define flose(f,x) do { fprintf(stderr, "%s: %s\n", f, x); goto out; } while (1)
@@ -227,7 +228,7 @@ int main(int argc, char **argv)
   if (PKCS11_enumerate_keys(slot->token, &keys, &nkeys))
     lose("unable to enumerate keys");
   for (i = 0; i < nkeys; i++) {
-    if (keys[i].label && !strcmp(keys[i].label, "KDB Access")) {
+    if (keys[i].label && !strcmp(keys[i].label, "KEY MAN key")) {
       key = &keys[i];
       break;
     }
