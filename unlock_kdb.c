@@ -57,7 +57,7 @@ static void usage(char *msg) {
  * Returns the size of the plaintext, or -1 on error.
  */
 static int try_decrypt(char *filename, unsigned char *plaintext,
-                       PKCS11_KEY *key)
+                       RSA *key)
 {
   struct stat sbuf;
   unsigned char *ciphertext = NULL;
@@ -87,7 +87,7 @@ static int try_decrypt(char *filename, unsigned char *plaintext,
   }
   fclose(F);
 
-  plainsize = PKCS11_private_decrypt(sbuf.st_size, ciphertext, plaintext,
+  plainsize = RSA_private_decrypt(sbuf.st_size, ciphertext, plaintext,
                                      key, RSA_PKCS1_PADDING);
   free(ciphertext);
   if (plainsize < 0)
@@ -112,6 +112,8 @@ int main(int argc, char **argv)
   PKCS11_CTX *ctx = NULL;
   PKCS11_SLOT *slots = NULL, *slot = NULL;
   PKCS11_KEY *keys = NULL, *key = NULL;
+  EVP_PKEY *keyobj = NULL;
+  RSA *rsakey = NULL;
   unsigned int nslots, nkeys, i;
   int opt, loaded = 0, slotix = -1;
 
@@ -232,12 +234,19 @@ int main(int argc, char **argv)
   }
   if (!key)
     lose("unable to find KDB access key");
-  keysize = PKCS11_get_key_size(key);
+  if (PKCS11_get_key_type(key) != EVP_PKEY_RSA)
+    lose("KDB access key is not an RSA key");
+  keyobj = PKCS11_get_private_key(key);
+  if (!keyobj)
+    lose("Cannot get key wrapper object for KDB access key");
+
+  rsakey = EVP_PKEY_get0_RSA(keyobj);
+  keysize = RSA_size(rsakey);
   if (!(plaintext = malloc(keysize)))
     lose("out of memory");
 
   if (filename) {
-    plainsize = try_decrypt(filename, plaintext, key);
+    plainsize = try_decrypt(filename, plaintext, rsakey);
     if (plainsize < 0) goto out;
 
   } else {
@@ -284,7 +293,7 @@ int main(int argc, char **argv)
         filename[dirlen] = '/';
       }
       strcpy(filename + dirlen + 1, de->d_name);
-      plainsize = try_decrypt(filename, plaintext, key);
+      plainsize = try_decrypt(filename, plaintext, rsakey);
       if (plainsize > 0) break;
     }
     closedir(D);
@@ -307,6 +316,7 @@ out:
   if (plaintext) free(plaintext);
   if (fnpat) free(fnpat);
   if (username) free(username);
+  if (keyobj) EVP_PKEY_free(keyobj);
   if (slots) PKCS11_release_all_slots(ctx, slots, nslots);
   if (loaded) PKCS11_CTX_unload(ctx);
   if (ctx) PKCS11_CTX_free(ctx);
