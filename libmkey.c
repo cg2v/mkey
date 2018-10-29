@@ -187,8 +187,8 @@ MKey_Error _mkey_do_request(MKey_Integer cookie, char *reqBUF, int reqlen,
 
       switch (_mkey_do_stream_req(reqBUF, reqlen, repBUF, replen, repptr)) {
         // These three are a sequence...
-        case STREAM_REQ_BIG:  lasterr = MKEY_ERR_TOO_BIG;
-        case STREAM_REQ_EOF:  try++;
+        case STREAM_REQ_BIG:  lasterr = MKEY_ERR_TOO_BIG; /* Falls through. */
+        case STREAM_REQ_EOF:  try++; /* Falls through. */
         case STREAM_REQ_INTR: continue;
 
         case STREAM_REQ_OK:   break;
@@ -256,8 +256,8 @@ MKey_Error _mkey_do_request(MKey_Integer cookie, char *reqBUF, int reqlen,
 
       switch (_mkey_do_stream_req(reqBUF, reqlen, repBUF, replen, repptr)) {
         // These three are a sequence...
-        case STREAM_REQ_BIG:  lasterr = MKEY_ERR_TOO_BIG;
-        case STREAM_REQ_EOF:  try++;
+        case STREAM_REQ_BIG:  lasterr = MKEY_ERR_TOO_BIG; /* Falls through. */
+        case STREAM_REQ_EOF:  try++; /* Falls through. */
         case STREAM_REQ_INTR: continue;
 
         case STREAM_REQ_OK:   break;

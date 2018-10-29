@@ -35,6 +35,9 @@
 
 static char *db_dir = MKEY_DB_DIR;
 
+#ifdef __GNUC__
+ __attribute__((noreturn))
+#endif
 static void usage(char *msg) {
   FILE *F = msg ? stderr : stdout;
 
