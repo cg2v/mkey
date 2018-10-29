@@ -111,10 +111,11 @@ int main(int argc, char **argv)
   int keysize, plainsize, status = 1;
   PKCS11_CTX *ctx = NULL;
   PKCS11_SLOT *slots = NULL, *slot = NULL;
+  PKCS11_CERT *certs = NULL, *cert = NULL;
   PKCS11_KEY *keys = NULL, *key = NULL;
   EVP_PKEY *keyobj = NULL;
   RSA *rsakey = NULL;
-  unsigned int nslots, nkeys, i;
+  unsigned int nslots, nkeys, ncerts, i;
   int opt, loaded = 0, slotix = -1;
 
 
@@ -193,15 +194,52 @@ int main(int argc, char **argv)
     slot = &slots[slotix];
   }
 
-  if ((username = strchr(slot->token->label, ' '))) {
-    int l = username - slot->token->label;
+  if (!strcmp(slot->token->label, "PIV Card Holder pin (PIV_II)")) {
+     char *buf = malloc(2048);
+     if (PKCS11_enumerate_certs(slot->token, &certs, &ncerts))
+       lose("unable to enumerate certs");
+     for (i = 0; i < ncerts; i++) {
+       X509_NAME *name = X509_get_subject_name(certs[i].x509);
+       int datalen;
+       datalen = X509_NAME_get_text_by_NID(name, NID_commonName, buf, 2048);
+       if (datalen > 2047) {
+         free(buf);
+         lose("Certificate name too long");
+       }
+       if (strncmp(buf + strlen(buf) - 6, " - KDB", 6))
+         continue;
+       cert = &certs[i];
+       datalen = X509_NAME_get_text_by_NID(name, NID_pkcs9_emailAddress, buf, 2048);
+       if (datalen > 2047) {
+         free(buf);
+         lose("Certificate name too long");
+       }
+       if ((username = strchr(buf, '@'))) {
+         int l = username - buf;
 
-    if ((username = malloc(l + 1))) {
-      strncpy(username, slot->token->label, l);
-      username[l] = 0;
-    }
+         if ((username = malloc(l + 1))) {
+           strncpy(username, buf, l);
+           username[l] = 0;
+         }
+       } else {
+         username = strdup(buf);
+       }
+       break;
+     }
+     free(buf);
+     if (cert == NULL)
+       lose("Cannot find KDB access key on token");
   } else {
-    username = strdup(slot->token->label);
+    if ((username = strchr(slot->token->label, ' '))) {
+      int l = username - slot->token->label;
+
+      if ((username = malloc(l + 1))) {
+        strncpy(username, slot->token->label, l);
+        username[l] = 0;
+      }
+    } else {
+      username = strdup(slot->token->label);
+    }
   }
   if (!username) lose("out of memory");
   printf("Hello, %s\n", username);
@@ -223,13 +261,17 @@ int main(int argc, char **argv)
     if (err) lose("PIN verification failed");
   }
 
-  /* find the KDB access key */
-  if (PKCS11_enumerate_keys(slot->token, &keys, &nkeys))
-    lose("unable to enumerate keys");
-  for (i = 0; i < nkeys; i++) {
-    if (keys[i].label && !strcmp(keys[i].label, "KDB Access")) {
-      key = &keys[i];
-      break;
+  if (!strcmp(slot->token->label, "PIV Card Holder pin (PIV_II)") && cert) {
+    key = PKCS11_find_key(cert);
+  } else {
+    /* find the KDB access key */
+    if (PKCS11_enumerate_keys(slot->token, &keys, &nkeys))
+      lose("unable to enumerate keys");
+    for (i = 0; i < nkeys; i++) {
+      if (keys[i].label && !strcmp(keys[i].label, "KDB Access")) {
+        key = &keys[i];
+        break;
+      }
     }
   }
   if (!key)
