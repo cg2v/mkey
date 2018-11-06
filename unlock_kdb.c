@@ -202,6 +202,8 @@ int main(int argc, char **argv)
        X509_NAME *name = X509_get_subject_name(certs[i].x509);
        int datalen;
        datalen = X509_NAME_get_text_by_NID(name, NID_commonName, buf, 2048);
+       if (datalen == -1) // No CN
+         continue;
        if (datalen > 2047) {
          free(buf);
          lose("Certificate name too long");
@@ -210,6 +212,14 @@ int main(int argc, char **argv)
          continue;
        cert = &certs[i];
        datalen = X509_NAME_get_text_by_NID(name, NID_pkcs9_emailAddress, buf, 2048);
+       if (datalen == -1) { // No emailAddress
+         fprintf(stderr, "Matching cert %s does not specify a username\n", buf);
+         if (!filename) {
+           free(buf);
+           lose("You must specify a file with this token");
+         }
+         break;
+       }
        if (datalen > 2047) {
          free(buf);
          lose("Certificate name too long");
