@@ -35,6 +35,9 @@
 
 static char *db_dir = MKEY_DB_DIR;
 
+#ifdef __GNUC__
+ __attribute__((noreturn))
+#endif
 static void usage(char *msg) {
   FILE *F = msg ? stderr : stdout;
 
@@ -54,7 +57,7 @@ static void usage(char *msg) {
  * Returns the size of the plaintext, or -1 on error.
  */
 static int try_decrypt(char *filename, unsigned char *plaintext,
-                       PKCS11_KEY *key)
+                       RSA *key)
 {
   struct stat sbuf;
   unsigned char *ciphertext = NULL;
@@ -84,7 +87,7 @@ static int try_decrypt(char *filename, unsigned char *plaintext,
   }
   fclose(F);
 
-  plainsize = PKCS11_private_decrypt(sbuf.st_size, ciphertext, plaintext,
+  plainsize = RSA_private_decrypt(sbuf.st_size, ciphertext, plaintext,
                                      key, RSA_PKCS1_PADDING);
   free(ciphertext);
   if (plainsize < 0)
@@ -108,8 +111,11 @@ int main(int argc, char **argv)
   int keysize, plainsize, status = 1;
   PKCS11_CTX *ctx = NULL;
   PKCS11_SLOT *slots = NULL, *slot = NULL;
+  PKCS11_CERT *certs = NULL, *cert = NULL;
   PKCS11_KEY *keys = NULL, *key = NULL;
-  unsigned int nslots, nkeys, i;
+  EVP_PKEY *keyobj = NULL;
+  RSA *rsakey = NULL;
+  unsigned int nslots, nkeys, ncerts, i;
   int opt, loaded = 0, slotix = -1;
 
 
@@ -188,15 +194,52 @@ int main(int argc, char **argv)
     slot = &slots[slotix];
   }
 
-  if ((username = strchr(slot->token->label, ' '))) {
-    int l = username - slot->token->label;
+  if (!strcmp(slot->token->label, "PIV Card Holder pin (PIV_II)")) {
+     char *buf = malloc(2048);
+     if (PKCS11_enumerate_certs(slot->token, &certs, &ncerts))
+       lose("unable to enumerate certs");
+     for (i = 0; i < ncerts; i++) {
+       X509_NAME *name = X509_get_subject_name(certs[i].x509);
+       int datalen;
+       datalen = X509_NAME_get_text_by_NID(name, NID_commonName, buf, 2048);
+       if (datalen > 2047) {
+         free(buf);
+         lose("Certificate name too long");
+       }
+       if (strncmp(buf + strlen(buf) - 6, " - KDB", 6))
+         continue;
+       cert = &certs[i];
+       datalen = X509_NAME_get_text_by_NID(name, NID_pkcs9_emailAddress, buf, 2048);
+       if (datalen > 2047) {
+         free(buf);
+         lose("Certificate name too long");
+       }
+       if ((username = strchr(buf, '@'))) {
+         int l = username - buf;
 
-    if ((username = malloc(l + 1))) {
-      strncpy(username, slot->token->label, l);
-      username[l] = 0;
-    }
+         if ((username = malloc(l + 1))) {
+           strncpy(username, buf, l);
+           username[l] = 0;
+         }
+       } else {
+         username = strdup(buf);
+       }
+       break;
+     }
+     free(buf);
+     if (cert == NULL)
+       lose("Cannot find KDB access key on token");
   } else {
-    username = strdup(slot->token->label);
+    if ((username = strchr(slot->token->label, ' '))) {
+      int l = username - slot->token->label;
+
+      if ((username = malloc(l + 1))) {
+        strncpy(username, slot->token->label, l);
+        username[l] = 0;
+      }
+    } else {
+      username = strdup(slot->token->label);
+    }
   }
   if (!username) lose("out of memory");
   printf("Hello, %s\n", username);
@@ -218,23 +261,34 @@ int main(int argc, char **argv)
     if (err) lose("PIN verification failed");
   }
 
-  /* find the KDB access key */
-  if (PKCS11_enumerate_keys(slot->token, &keys, &nkeys))
-    lose("unable to enumerate keys");
-  for (i = 0; i < nkeys; i++) {
-    if (keys[i].label && !strcmp(keys[i].label, "KDB Access")) {
-      key = &keys[i];
-      break;
+  if (!strcmp(slot->token->label, "PIV Card Holder pin (PIV_II)") && cert) {
+    key = PKCS11_find_key(cert);
+  } else {
+    /* find the KDB access key */
+    if (PKCS11_enumerate_keys(slot->token, &keys, &nkeys))
+      lose("unable to enumerate keys");
+    for (i = 0; i < nkeys; i++) {
+      if (keys[i].label && !strcmp(keys[i].label, "KDB Access")) {
+        key = &keys[i];
+        break;
+      }
     }
   }
   if (!key)
     lose("unable to find KDB access key");
-  keysize = PKCS11_get_key_size(key);
+  if (PKCS11_get_key_type(key) != EVP_PKEY_RSA)
+    lose("KDB access key is not an RSA key");
+  keyobj = PKCS11_get_private_key(key);
+  if (!keyobj)
+    lose("Cannot get key wrapper object for KDB access key");
+
+  rsakey = EVP_PKEY_get0_RSA(keyobj);
+  keysize = RSA_size(rsakey);
   if (!(plaintext = malloc(keysize)))
     lose("out of memory");
 
   if (filename) {
-    plainsize = try_decrypt(filename, plaintext, key);
+    plainsize = try_decrypt(filename, plaintext, rsakey);
     if (plainsize < 0) goto out;
 
   } else {
@@ -281,7 +335,7 @@ int main(int argc, char **argv)
         filename[dirlen] = '/';
       }
       strcpy(filename + dirlen + 1, de->d_name);
-      plainsize = try_decrypt(filename, plaintext, key);
+      plainsize = try_decrypt(filename, plaintext, rsakey);
       if (plainsize > 0) break;
     }
     closedir(D);
@@ -304,6 +358,7 @@ out:
   if (plaintext) free(plaintext);
   if (fnpat) free(fnpat);
   if (username) free(username);
+  if (keyobj) EVP_PKEY_free(keyobj);
   if (slots) PKCS11_release_all_slots(ctx, slots, nslots);
   if (loaded) PKCS11_CTX_unload(ctx);
   if (ctx) PKCS11_CTX_free(ctx);
